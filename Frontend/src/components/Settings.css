@@ -1,0 +1,100 @@
+/* Wrapper e títulos */
+.settings-wrap { width: 100%; max-width: 1100px; margin: 16px auto; }
+.settings-title { color: #232323; font-weight: 600; margin: 0 0 6px 0; font-size: 1.8rem; }
+.settings-sub { margin: 0 0 16px 0; color: #666; }
+
+/* Card */
+.settings-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  padding: 24px;
+}
+
+/* Grid e campos */
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 20px; }
+.settings-field { display: flex; flex-direction: column; gap: 6px; }
+.settings-field label { color: #888; font-weight: 500; }
+.settings-field input, .settings-field select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  font-size: 1rem;
+  color: #232323;
+}
+.settings-field input::placeholder { color: #9ca3af; }
+.settings-field input:focus, .settings-field select:focus {
+  border-color: #00bfff;
+  box-shadow: 0 0 0 3px rgba(0,191,255,0.12);
+  background: #fff;
+  outline: none;
+}
+.settings-field input:hover, .settings-field select:hover { background: #fefefe; }
+.settings-field input:disabled, .settings-field select:disabled { opacity: .7; cursor: not-allowed; }
+.settings-grid .input-suffix input { flex: 1; min-width: 0; }
+.settings-field small { color: #6b7280; }
+.checkbox-inline { display: flex; align-items: center; gap: 8px; }
+
+/* Ações */
+.settings-actions { margin-top: 16px; display: flex; gap: 12px; }
+.settings-actions.right { justify-content: flex-end; align-items: center; }
+.btn-ghost { background: transparent; border: 1px solid #e5e5e5; padding: 10px 16px; border-radius: 10px; cursor: pointer; color: #111; }
+.btn-ghost:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+.btn-primary { background: #00bfff; color: #0f1720; border: none; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+.btn-primary:hover { box-shadow: 0 6px 20px rgba(0,191,255,.25); }
+.btn-icon { background: #fff; border: 1px solid #f0f0f0; width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; line-height: 1; }
+.btn-icon:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+.btn-icon.danger { color: #cc1f1a; border-color: #ffe2e2; background: #fff0f0; }
+.btn-icon.danger:hover { background: #ffe8e8; }
+.save-ok { color: #047857; font-weight: 600; margin-right: 12px; }
+
+/* Tabela/impostos - inputs com sufixo */
+.input-suffix { display: flex; align-items: center; gap: 8px; }
+.input-suffix input { width: 140px; }
+.suffix {
+  display: inline-flex;
+  align-items: center;
+  height: 42px; /* acompanha a altura do input */
+  padding: 0 10px;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  color: #555;
+}
+.table-actions { display: flex; gap: 8px; }
+.btn-ghost.small { padding: 6px 10px; border-radius: 8px; }
+
+/* Inputs da tabela: visual mais polido */
+.settings-card .result-table input,
+.settings-card .result-table select {
+  padding: 10px 12px;
+  height: 42px; /* igual aos inputs da calculadora */
+  box-sizing: border-box;
+  border: 1px solid #e0e0e0; /* unificar com calculadora */
+  border-radius: 10px;
+  background: #fafafa;
+  color: #232323;
+  font-size: 1rem;
+  outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
+}
+.settings-card .result-table input::placeholder { color: #9ca3af; } /* gray-400 */
+.settings-card .result-table input:focus,
+.settings-card .result-table select:focus {
+  border-color: #00bfff;
+  box-shadow: 0 0 0 3px rgba(0,191,255,0.15);
+  background: #fff;
+}
+.settings-card .result-table input:hover,
+.settings-card .result-table select:hover { background: #fefefe; }
+.settings-card .result-table td:first-child input { width: 100%; min-width: 220px; }
+.settings-card .result-table td:nth-child(2) input { width: 120px; text-align: right; }
+
+/* Linha hover para ajudar a leitura */
+.settings-card .result-table tbody tr:hover { background: #f8fafc; } /* slate-50 */
+
+/* Responsivo */
+@media (max-width: 700px) {
+  .settings-grid { grid-template-columns: 1fr; }
+}

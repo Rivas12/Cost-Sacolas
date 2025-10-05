@@ -1,0 +1,122 @@
+/* Wrapper */
+.calc-wrap { width: 100%; max-width: 1100px; margin: 16px auto; }
+.calc-title { color: #232323; font-weight: 600; margin: 0 0 6px 0; font-size: 1.8rem; }
+.calc-sub { margin: 0 0 16px 0; color: #666; }
+
+/* Card do formulário */
+.calc-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  padding: 24px;
+}
+
+.calc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.calc-field { display: flex; flex-direction: column; gap: 6px; }
+/* Alturas padrão para manter alinhamento entre campos */
+.calc-field { --control-height: 42px; --label-height: 20px; --label-gap: 6px; }
+.calc-field > label {
+  color: #888; font-weight: 500;
+  min-height: var(--label-height);
+  display: flex; align-items: center;
+}
+.calc-field input, .calc-field select {
+  padding: 10px 12px;
+  height: var(--control-height);
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  font-size: 1rem;
+  color: #232323;
+  outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
+}
+.calc-field input::placeholder { color: #9ca3af; }
+.calc-field input:focus, .calc-field select:focus { border-color: #00bfff; box-shadow: 0 0 0 3px rgba(0,191,255,0.12); background: #fff; }
+.calc-field input:hover, .calc-field select:hover { background: #fefefe; }
+.calc-field.checkbox { padding-top: calc(var(--label-height) + var(--label-gap)); }
+.calc-field.checkbox label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: #232323;
+  /* Mantém a altura semelhante aos inputs de texto para alinhar ao meio */
+  min-height: var(--control-height);
+}
+/* Remove espaçamento extra do checkbox e garante alinhamento vertical suave */
+.calc-field.checkbox input[type="checkbox"] {
+  margin: 0;
+}
+
+.calc-actions { margin-top: 16px; display: flex; gap: 12px; }
+.btn-primary {
+  background: #00bfff; color: #0f1720; border: none; padding: 10px 16px; border-radius: 10px;
+  cursor: pointer; font-weight: 600; transition: transform .05s ease, box-shadow .2s ease;
+}
+.btn-primary:hover { box-shadow: 0 6px 20px rgba(0,191,255,.25); }
+.btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+.btn-ghost { background: transparent; border: 1px solid #e5e5e5; padding: 10px 16px; border-radius: 10px; cursor: pointer; color: #111; }
+
+.calc-error { margin-top: 12px; color: #b30000; font-weight: 600; }
+
+/* Card do resultado */
+.result-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  padding: 20px 24px;
+  margin-top: 16px;
+}
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.result-head h3 { margin: 0 0 2px 0; }
+.result-highlight { background: linear-gradient(180deg, #e7f8ff, #d7f2ff); padding: 10px 14px; border-radius: 12px; text-align: right; }
+.result-highlight span { color: #25627a; font-size: .9rem; }
+.result-highlight strong { display: block; font-size: 1.3rem; color: #033b4b; }
+
+.result-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+.result-box { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 12px; }
+.result-box span { color: #6b7280; font-size: .9rem; }
+.result-box strong { display: block; color: #232323; margin-top: 6px; }
+
+.result-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 14px; }
+.result-table th, .result-table td { text-align: left; padding: 10px 8px; }
+.result-table thead { border-bottom: 2px solid #ececec; }
+.result-table tbody tr:nth-child(odd) { background: #fafafa; }
+
+.impostos-list { margin-top: 14px; }
+.impostos-list h4 { margin: 0 0 10px 0; }
+.impostos-list ul { list-style: none; padding: 0; margin: 0; }
+.impostos-list li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #eee; }
+
+/* Card bloqueado (etapas) */
+.locked-card {
+  display: flex; align-items: center; gap: 12px;
+  background: #fffef8;
+  border: 1px dashed #f2e8c6;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 14px;
+  cursor: pointer;
+}
+.locked-card:hover { background: #fff9e8; }
+.lock-icon { font-size: 20px; }
+
+/* Responsividade */
+@media (max-width: 1000px) {
+  .calc-grid { grid-template-columns: repeat(2, 1fr); }
+  .result-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .calc-grid { grid-template-columns: 1fr; }
+  .result-grid { grid-template-columns: 1fr; }
+  /* Em layout de 1 coluna, não precisamos compensar o espaço do label */
+  .calc-field.checkbox { padding-top: 0; }
+  .calc-field.checkbox label { min-height: auto; }
+}

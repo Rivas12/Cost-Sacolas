@@ -1,0 +1,39 @@
+/* Base */
+:root { --sidebar-width: 250px; }
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  background: #f5f6fa;
+}
+/* Anula o flex do template do Vite e evita rolagem lateral */
+body { display: block; overflow-x: hidden; }
+
+/* Layout */
+.app-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f6fa;
+}
+.main-content {
+  flex: 1;
+  background: #ffffff;
+}
+.page-container {
+  max-width: 1200px;
+  margin: 0; /* alinha à esquerda */
+  padding: 32px;
+}
+
+/* Desktop: reserva espaço para a sidebar fixa */
+@media (min-width: 1025px) {
+  .app-container { padding-left: var(--sidebar-width); }
+}
+
+/* Mobile/Tablet: usa toda a largura */
+@media (max-width: 1024px) {
+  .app-container { flex-direction: column; padding-left: 0; }
+  .main-content { margin-left: 0; padding: 16px; }
+}

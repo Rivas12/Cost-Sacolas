@@ -1,0 +1,46 @@
+# Root
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.cache
+
+# Env files
+.env
+.env.*
+!.env.example
+Backend/.env
+Frontend/.env
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+venv/
+.env.python
+
+# Node/Vite/React
+node_modules/
+dist/
+build/
+.vite/
+.sass-cache/
+.npm/
+
+# Coverage/Reports
+coverage/
+report/
+
+# OS junk
+Icon?
