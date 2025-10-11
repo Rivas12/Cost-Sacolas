@@ -11,6 +11,7 @@ import sqlite3
 import json
 import ssl
 import html
+import math
 try:
     import certifi
     _CAFILE = certifi.where()
@@ -43,6 +44,7 @@ def put_configs():
         notificacoes=data.get('notificacoes'),
         perdas_calibracao_un=data.get('perdas_calibracao_un'),
         valor_silk=data.get('valor_silk'),
+        tamanho_alca=data.get('tamanho_alca'),
     )
     if not ok:
         return jsonify({'error': 'Nada para atualizar'}), 400
@@ -53,7 +55,7 @@ def put_configs():
 @api_bp.route('/gramaturas', methods=['GET'])
 def get_gramaturas():
     gramaturas = Gramatura.get_all()
-    return jsonify([{'id': g.id, 'gramatura': g.gramatura, 'preco': g.preco} for g in gramaturas])
+    return jsonify([{'id': g.id, 'gramatura': g.gramatura, 'preco': g.preco, 'altura_cm': g.altura_cm} for g in gramaturas])
 
 # Consultar todos impostos fixos
 @api_bp.route('/impostos_fixos', methods=['GET'])
@@ -125,7 +127,10 @@ def get_icms_estados():
 @api_bp.route('/gramaturas', methods=['POST'])
 def add_gramatura():
     data = request.get_json()
-    Gramatura.add(data['gramatura'], data['preco'])
+    gram = data.get('gramatura')
+    preco = data.get('preco')
+    altura = data.get('altura_cm')
+    Gramatura.add(gram, preco, altura)
     return jsonify({'message': 'Gramatura adicionada!'}), 201
 
 # Editar gramatura
@@ -134,7 +139,11 @@ def edit_gramatura(id):
     data = request.get_json()
     conn = sqlite3.connect(DB_IMPOSTO)
     cursor = conn.cursor()
-    cursor.execute('UPDATE gramaturas SET gramatura=?, preco=? WHERE id=?', (data['gramatura'], data['preco'], id))
+    # Atualiza gramatura, preco e opcionalmente altura_cm
+    if 'altura_cm' in data:
+        cursor.execute('UPDATE gramaturas SET gramatura=?, preco=?, altura_cm=? WHERE id=?', (data['gramatura'], data['preco'], data.get('altura_cm'), id))
+    else:
+        cursor.execute('UPDATE gramaturas SET gramatura=?, preco=? WHERE id=?', (data['gramatura'], data['preco'], id))
     conn.commit()
     conn.close()
     return jsonify({'message': 'Gramatura editada!'})
@@ -165,6 +174,27 @@ def calcular_preco():
     # Silk: valor em R$ por unidade. Quando habilitado, deve ser aplicado EM CADA UNIDADE (sem rateios)
     valor_silk_cfg = float(cfg.get('valor_silk', 0) or 0)
     incluir_valor_silk = bool(data.get('incluir_valor_silk', False))
+    incluir_lateral = bool(data.get('incluir_lateral', False))
+    incluir_alca = bool(data.get('incluir_alca', False))
+    incluir_fundo = bool(data.get('incluir_fundo', False))
+    # Tamanho da alça (cm) — preferência: payload override, senão configuração (campo salvo: tamanho_alca)
+    tamanho_alca_cfg = float(cfg.get('tamanho_alca', 0) or 0)
+    try:
+        tamanho_alca = float(data.get('tamanho_alca', tamanho_alca_cfg) or 0)
+    except Exception:
+        tamanho_alca = tamanho_alca_cfg
+    lateral_cm = None
+    fundo_cm = None
+    try:
+        if data.get('lateral_cm') is not None and str(data.get('lateral_cm')) != '':
+            lateral_cm = float(data.get('lateral_cm'))
+    except Exception:
+        lateral_cm = None
+    try:
+        if data.get('fundo_cm') is not None and str(data.get('fundo_cm')) != '':
+            fundo_cm = float(data.get('fundo_cm'))
+    except Exception:
+        fundo_cm = None
     # Valor unitário do silk (por unidade). Se não incluir, é 0.
     valor_silk_unit = float(data.get('valor_silk', valor_silk_cfg)) if incluir_valor_silk else 0.0
     estado = data.get('estado')
@@ -185,16 +215,28 @@ def calcular_preco():
     conn = sqlite3.connect(DB_IMPOSTO)
     cursor = conn.cursor()
     if gramatura_id:
-        cursor.execute('SELECT preco, gramatura FROM gramaturas WHERE id=?', (gramatura_id,))
+        cursor.execute('SELECT preco, gramatura, altura_cm FROM gramaturas WHERE id=?', (gramatura_id,))
     elif gramatura_nome:
-        cursor.execute('SELECT preco, gramatura FROM gramaturas WHERE gramatura=?', (gramatura_nome,))
+        cursor.execute('SELECT preco, gramatura, altura_cm FROM gramaturas WHERE gramatura=?', (gramatura_nome,))
     else:
         return jsonify({'error': 'Informe gramatura_id ou gramatura_nome'}), 400
     row = cursor.fetchone()
     if not row:
         conn.close()
         return jsonify({'error': 'Gramatura não encontrada'}), 404
-    custo_un, gramatura_nome = row
+    # row: preco, gramatura, altura_cm
+    custo_un, gramatura_nome, altura_cm_db = row
+    # altura do produto solicitada (pode vir no payload) - em cm
+    # Validação: altura_cm é obrigatória e deve ser um número positivo
+    altura_produto = None
+    try:
+        if data.get('altura_cm') is None or str(data.get('altura_cm')) == '':
+            return jsonify({'error': 'Campo altura_cm é obrigatório.'}), 400
+        altura_produto = float(data.get('altura_cm'))
+        if altura_produto <= 0:
+            return jsonify({'error': 'Campo altura_cm deve ser maior que zero.'}), 400
+    except Exception:
+        return jsonify({'error': 'Campo altura_cm inválido.'}), 400
 
     # Buscar impostos fixos
     cursor.execute('SELECT valor, nome FROM impostos_fixos')
@@ -210,7 +252,12 @@ def calcular_preco():
     icms_decimal = icms / 100
 
     # Custo por unidade do material + silk (se houver)
-    custo_material_unit = custo_un * (largura_cm / 100)
+    # Ajustes de dimensão: lateral dobra (2x) e soma à largura; fundo soma à altura (sem dobrar)
+    lateral_effective = (lateral_cm or 0) * 2.0
+    largura_used = float(largura_cm or 0) + lateral_effective
+
+    # custo por unidade considera a largura efetiva usada
+    custo_material_unit = custo_un * (largura_used / 100)
     custo_real = round(custo_material_unit + (valor_silk_unit or 0), 2)
 
     # Quantidade total considerada inclui perdas de calibração (unidades extras)
@@ -239,8 +286,78 @@ def calcular_preco():
     # Verificação: custo total + componentes percentuais deve fechar o preço final
     check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms, 2)
 
+    # Cálculo de aproveitamento da altura da bobina (percentual da bobina que será usado
+    # ao encaixar o maior número inteiro de unidades por bobina)
+    aproveitamento_percentual = None
+    unidades_por_bobina = None
+    aproveitamento_detalhe = None
+    if altura_produto and altura_cm_db:
+        try:
+            if altura_cm_db > 0 and altura_produto > 0:
+                # Cada sacola usa frente e verso -> dobra a altura do produto, e soma o fundo (se houver)
+                # Se incluir_alca, soma o valor da alça (em cm) UMA vez (não dobra)
+                altura_effective = (altura_produto * 2.0) + (fundo_cm or 0)
+                if incluir_alca:
+                    # use tamanho_alca (saved size) when including alça in effective height
+                    altura_effective += float(tamanho_alca or 0)
+                unidades_por_bobina = int(altura_cm_db // altura_effective)
+                # Altura efetivamente utilizada por bobina ao cortar unidades inteiras (considerando frente+verso e fundo)
+                utilizada_por_bobina = unidades_por_bobina * altura_effective
+                aproveitamento_percentual = round((utilizada_por_bobina / altura_cm_db) * 100.0, 2)
+                # Monta detalhe completo do aproveitamento
+                aproveitamento_detalhe = {
+                    'bobina_altura_cm': float(altura_cm_db),
+                    'altura_produto_cm': float(altura_produto),
+                    'fundo_cm_unit': float(fundo_cm or 0),
+                    'altura_unit_effective_cm': float(altura_effective),
+                    'unidades_por_bobina': int(unidades_por_bobina),
+                    'utilizada_por_bobina_cm': float(utilizada_por_bobina),
+                    'sobra_por_bobina_cm': float(max(0, altura_cm_db - utilizada_por_bobina)),
+                    'bobina_largura_utilizada_cm': float(largura_used),
+                    'largura_input_cm': float(largura_cm),
+                    'lateral_total_cm': float(lateral_effective),
+                }
+        except Exception:
+            aproveitamento_percentual = None
+            unidades_por_bobina = None
+
+    # Recompute effective unit height (including alça if applicable) for response fields
+    altura_unit_effective_value = None
+    try:
+        if altura_produto is not None:
+            altura_unit_effective_value = (altura_produto * 2.0) + (fundo_cm or 0)
+            if incluir_alca:
+                altura_unit_effective_value += float(tamanho_alca or 0)
+    except Exception:
+        altura_unit_effective_value = None
+
+    # unidades_por_bobina (fallback) and totals
+    unidades_por_bobina_calc = None
+    utilizada_por_bobina_value = None
+    sobra_por_bobina = None
+    bobinas_necessarias = None
+    total_altura_needed = None
+    total_bobinas = None
+    sobra_total = None
+    try:
+        if altura_unit_effective_value and altura_cm_db:
+            unidades_por_bobina_calc = int(altura_cm_db // altura_unit_effective_value)
+            unidades_use = unidades_por_bobina if unidades_por_bobina is not None else unidades_por_bobina_calc
+            utilizada_por_bobina_value = (unidades_use or 0) * (altura_unit_effective_value or 0)
+            sobra_por_bobina = max(0, altura_cm_db - (utilizada_por_bobina_value or 0))
+            if unidades_use and unidades_use > 0:
+                bobinas_necessarias = math.ceil(quantidade / unidades_use)
+            if altura_cm_db and altura_cm_db > 0 and altura_unit_effective_value is not None:
+                total_altura_needed = quantidade * altura_unit_effective_value
+                total_bobinas = math.ceil(total_altura_needed / altura_cm_db) if altura_cm_db > 0 else None
+                if total_bobinas is not None:
+                    sobra_total = (total_bobinas * altura_cm_db) - total_altura_needed
+    except Exception:
+        pass
+
     return jsonify({
         'gramatura_nome': gramatura_nome,
+        'gramatura_altura_cm': altura_cm_db,
         # custo_un ajustado: custo unitário considerando perdas (custo_total / quantidade solicitada)
         'custo_un': round((custo_total / max(1, quantidade)), 2),
         'largura_cm': largura_cm,
@@ -267,8 +384,29 @@ def calcular_preco():
         'valor_silk_unitario': round(valor_silk_unit, 2),
         'valor_silk_total': valor_silk_total,
         'incluir_valor_silk': incluir_valor_silk,
+        'incluir_lateral': incluir_lateral,
+        'incluir_alca': incluir_alca,
+    'incluir_fundo': incluir_fundo,
+    'lateral_cm': lateral_cm,
+    'fundo_cm': fundo_cm,
+    'largura_utilizada_cm': round(largura_used, 2),
+    'altura_utilizada_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
         'preco_final': preco_final,
-        'check': check
+        'check': check,
+        'altura_produto_cm': altura_produto,
+        'aproveitamento_altura_percentual': aproveitamento_percentual,
+        'unidades_por_bobina': unidades_por_bobina if unidades_por_bobina is not None else (unidades_por_bobina_calc or 0),
+    # Expose tamanho_alca (saved value). Keep valor_alca for compatibility but it mirrors tamanho_alca.
+    'tamanho_alca': float(tamanho_alca or 0),
+    'valor_alca': float(tamanho_alca or 0),
+        'altura_unit_effective_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
+        'aproveitamento_detalhe': aproveitamento_detalhe,
+        'utilizada_por_bobina_cm': round(utilizada_por_bobina_value, 2) if utilizada_por_bobina_value is not None else None,
+        'sobra_por_bobina_cm': round(sobra_por_bobina, 2) if sobra_por_bobina is not None else None,
+        'bobinas_necessarias': bobinas_necessarias,
+        'total_altura_necessaria_cm': round(total_altura_needed, 2) if total_altura_needed is not None else None,
+        'total_bobinas_necessarias': total_bobinas,
+        'sobra_total_cm': round(sobra_total, 2) if sobra_total is not None else None,
     })
 
 
@@ -350,6 +488,17 @@ def enviar_aprovacao():
             f"• Silk total: {fmt_money(cot.get('valor_silk_total') or cot.get('valor_silk') or 0)}",
         ])
 
+    # Outros extras (lateral / alça)
+    extras_flags = []
+    if bool(cot.get('incluir_lateral')):
+        extras_flags.append('Lateral')
+    if bool(cot.get('incluir_alca')):
+        extras_flags.append('Alça')
+    if bool(cot.get('incluir_fundo')):
+        extras_flags.append('Fundo')
+    if extras_flags:
+        linhas.extend(['', f"• Extras: {', '.join(extras_flags)}"])
+
     linhas.extend([
         '',
         '<b>📊 Resumo final</b>',
@@ -357,6 +506,10 @@ def enviar_aprovacao():
         f"<b>Preço final:</b> {fmt_money(cot.get('preco_final'))}",
         f"<b>Margem:</b> {cot.get('margem_percentual', 0)}% • {fmt_money(cot.get('valor_margem'))}",
     ])
+
+    # Aproveitamento (se disponível)
+    if cot.get('aproveitamento_altura_percentual') is not None:
+        linhas.extend(['', f"• Aproveitamento (altura): {cot.get('aproveitamento_altura_percentual')}% • {cot.get('unidades_por_bobina', '—')} un/bobina"]) 
 
     text = '\n'.join(linhas)
 

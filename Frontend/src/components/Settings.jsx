@@ -52,6 +52,7 @@ export default function Settings() {
             outros_custos: dataCfg.outros_custos ?? s.outros_custos,
             perdas_calibracao_un: dataCfg.perdas_calibracao_un ?? s.perdas_calibracao_un ?? 0,
             valor_silk: dataCfg.valor_silk ?? s.valor_silk ?? 0,
+            tamanho_alca: dataCfg.tamanho_alca ?? s.tamanho_alca ?? 0,
             tema: dataCfg.tema ?? s.tema,
             notificacoes: !!dataCfg.notificacoes,
           }));
@@ -93,11 +94,12 @@ export default function Settings() {
     setSaving(true);
     try {
       // Salva configurações globais no banco
-      const cfgPayload = {
+        const cfgPayload = {
         margem: toNumber(settings.margem),
         outros_custos: toNumber(settings.outros_custos),
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         valor_silk: toNumber(settings.valor_silk),
+        tamanho_alca: parseFloat(settings.tamanho_alca || 0),
         tema: settings.tema,
         notificacoes: !!settings.notificacoes,
       };
@@ -221,7 +223,7 @@ export default function Settings() {
               min="0"
               step="1"
               placeholder="0"
-              value={settings.perdas_calibracao_un || 0}
+              value={settings.perdas_calibracao_un ?? ''}
               onChange={(e) => setSettings((s) => ({ ...s, perdas_calibracao_un: e.target.value }))}
             />
             <small>Unidades extras produzidas para calibrar a máquina</small>
@@ -236,12 +238,29 @@ export default function Settings() {
                 min="0"
                 step="0.01"
                 placeholder="0,00"
-                value={settings.valor_silk || 0}
+                value={settings.valor_silk ?? ''}
                 onChange={(e) => setSettings((s) => ({ ...s, valor_silk: e.target.value }))}
               />
               <span className="suffix">R$</span>
             </div>
             <small>Valor fixo por unidade; quando ativado, soma em cada peça</small>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="alca">Uso alça (cm)</label>
+            <div className="input-suffix">
+              <input
+                id="alca"
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder="0.0"
+                value={settings.tamanho_alca ?? ''}
+                onChange={(e) => setSettings((s) => ({ ...s, tamanho_alca: e.target.value }))}
+              />
+              <span className="suffix">cm</span>
+            </div>
+            <small>Altura fixa em cm que será somada quando "Incluir alça" estiver marcado</small>
           </div>
         </div>
 

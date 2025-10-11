@@ -4,7 +4,7 @@ const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(() => {
-    const defaults = { tema: 'Escuro', notificacoes: false, margem: 0, outros_custos: 0, perdas_calibracao_un: 0, valor_silk: 0 };
+  const defaults = { tema: 'Escuro', notificacoes: false, margem: 0, outros_custos: 0, perdas_calibracao_un: 0, valor_silk: 0, tamanho_alca: 0 };
     try {
       const raw = localStorage.getItem('cost-settings');
       if (!raw) return defaults;

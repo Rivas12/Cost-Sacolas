@@ -3,7 +3,7 @@ import './Settings.css'; // Reutiliza estilos globais (cards, tabelas, botões)
 
 export default function Gramaturas() {
   const [itens, setItens] = useState([]);
-  const [novo, setNovo] = useState({ gramatura: '', preco: '' });
+  const [novo, setNovo] = useState({ gramatura: '', preco: '', altura_cm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -21,6 +21,12 @@ export default function Gramaturas() {
     const s = String(val).replace(',', '.');
     const n = parseFloat(s);
     return isNaN(n) ? 0 : n;
+  };
+  const maybeNumberOrNull = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+    const s = String(val).replace(',', '.');
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
   };
 
   const carregar = async () => {
@@ -62,7 +68,7 @@ export default function Gramaturas() {
       const updates = itens
         .filter((g) => !!g.id)
         .map(async (g) => {
-          const payload = { gramatura: g.gramatura, preco: toNumber(g.preco) };
+          const payload = { gramatura: g.gramatura, preco: toNumber(g.preco), altura_cm: maybeNumberOrNull(g.altura_cm) };
           const res = await fetch(API.ATUALIZAR(g.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -78,7 +84,7 @@ export default function Gramaturas() {
       // Cria novos (sem id)
       const novos = itens.filter((g) => !g.id && g.gramatura && g.preco !== '');
       for (const g of novos) {
-        const payload = { gramatura: g.gramatura, preco: toNumber(g.preco) };
+        const payload = { gramatura: g.gramatura, preco: toNumber(g.preco), altura_cm: maybeNumberOrNull(g.altura_cm) };
         const res = await fetch(API.CRIAR, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -90,13 +96,13 @@ export default function Gramaturas() {
 
       // Também cria o que estiver na linha de novo
       if (novo.gramatura && novo.preco !== '') {
-        const payload = { gramatura: novo.gramatura, preco: toNumber(novo.preco) };
+        const payload = { gramatura: novo.gramatura, preco: toNumber(novo.preco), altura_cm: maybeNumberOrNull(novo.altura_cm) };
         const res = await fetch(API.CRIAR, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || `Falha ao adicionar ${novo.gramatura}`);
-        setNovo({ gramatura: '', preco: '' });
+        setNovo({ gramatura: '', preco: '', altura_cm: '' });
       }
 
       await carregar();
@@ -123,6 +129,7 @@ export default function Gramaturas() {
               <tr>
                 <th style={{textAlign:'left'}}>Gramatura</th>
                 <th style={{textAlign:'left'}}>Preço</th>
+                <th style={{textAlign:'left'}}>Altura (cm)</th>
                 <th style={{width:90, textAlign:'left'}}>Ações</th>
               </tr>
             </thead>
@@ -147,6 +154,15 @@ export default function Gramaturas() {
                       />
                       <span className="suffix">R$</span>
                     </div>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="Altura (cm)"
+                      value={g.altura_cm ?? ''}
+                      onChange={(e) => setItens((list) => list.map((i) => (i.id === g.id ? { ...i, altura_cm: e.target.value } : (i === g ? { ...i, altura_cm: e.target.value } : i))))}
+                    />
                   </td>
                   <td>
                     <div className="table-actions">
@@ -174,7 +190,10 @@ export default function Gramaturas() {
                   </div>
                 </td>
                 <td>
-                  <button className="btn-ghost small" type="button" onClick={()=>{ if(!novo.gramatura) return; setItens((list)=>[...list, { gramatura: novo.gramatura, preco: novo.preco }]); setNovo({ gramatura:'', preco:'' }); }}>Adicionar</button>
+                  <input type="number" step="0.1" placeholder="Altura (cm)" value={novo.altura_cm} onChange={(e)=>setNovo((n)=>({...n, altura_cm:e.target.value}))} />
+                </td>
+                <td>
+                  <button className="btn-ghost small" type="button" onClick={()=>{ if(!novo.gramatura) return; setItens((list)=>[...list, { gramatura: novo.gramatura, preco: novo.preco, altura_cm: novo.altura_cm }]); setNovo({ gramatura:'', preco:'', altura_cm:'' }); }}>Adicionar</button>
                 </td>
               </tr>
             </tbody>

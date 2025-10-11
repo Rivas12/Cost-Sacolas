@@ -55,6 +55,35 @@
   margin: 0;
 }
 
+/* Lista de opções (checklists) dentro do formulário */
+.options-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  align-items: start;
+}
+.options-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #232323;
+  font-weight: 500;
+}
+.options-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+/* Row wrapper to place options in a single line on desktop and wrap on small screens */
+.options-row { margin-top: 12px; }
+.options-row .options-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+}
+.options-row .options-list label { margin: 0; }
+
 .calc-actions { margin-top: 16px; display: flex; gap: 12px; }
 .btn-primary {
   background: #00bfff; color: #0f1720; border: none; padding: 10px 16px; border-radius: 10px;
@@ -73,6 +102,8 @@
   box-shadow: 0 2px 16px rgba(0,0,0,0.08);
   padding: 20px 24px;
   margin-top: 16px;
+  /* Garante cor legível para o texto do cartão de resultado mesmo se existir uma cor global clara/esmaecida */
+  color: #232323;
 }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .result-head h3 { margin: 0 0 2px 0; }
@@ -86,7 +117,7 @@
 .result-box strong { display: block; color: #232323; margin-top: 6px; }
 
 .result-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 14px; }
-.result-table th, .result-table td { text-align: left; padding: 10px 8px; }
+.result-table th, .result-table td { text-align: left; padding: 10px 8px; color: #232323; }
 .result-table thead { border-bottom: 2px solid #ececec; }
 .result-table tbody tr:nth-child(odd) { background: #fafafa; }
 
@@ -107,6 +138,25 @@
 }
 .locked-card:hover { background: #fff9e8; }
 .lock-icon { font-size: 20px; }
+
+/* Toggle para detalhes de aproveitamento */
+.aprove-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(180deg,#e7f8ff,#d7f2ff);
+  border: 1px solid #cceff8;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.aprove-toggle .caret {
+  display: inline-block;
+  transition: transform .18s ease;
+  color: #033b4b;
+}
+.aprove-toggle .caret.open { transform: rotate(180deg); }
 
 /* Responsividade */
 @media (max-width: 1000px) {
