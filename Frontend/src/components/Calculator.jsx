@@ -425,14 +425,14 @@ export default function Calculator() {
                           </tr>
                           {includeAlca && (
                             <tr>
-                              <td>Alça (quando incluída)</td>
+                              <td>Alça</td>
                               <td>{bobinaAlt > 0 ? ((alca / (bobinaAlt || 1)) * 100).toFixed(2) + '%' : ''}</td>
                               <td>{alca.toFixed(2)} cm</td>
                             </tr>
                           )}
                           {includeFundo && (
                             <tr>
-                              <td>Fundo (quando incluído)</td>
+                              <td>Fundo</td>
                               <td>{bobinaAlt > 0 ? ((fundo / (bobinaAlt || 1)) * 100).toFixed(2) + '%' : ''}</td>
                               <td>{fundo.toFixed(2)} cm</td>
                             </tr>
