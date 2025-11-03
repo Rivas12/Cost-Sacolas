@@ -44,3 +44,6 @@ report/
 
 # OS junk
 Icon?
+
+# Database files (do not track local DB)
+*.db
