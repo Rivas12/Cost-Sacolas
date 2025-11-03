@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Calculator from './components/Calculator';
+import CalculoEmLote from './components/CalculoEmLote';
 import Gramaturas from './components/Gramaturas';
 import Settings from './components/Settings';
 import './App.css';
@@ -41,7 +42,8 @@ function App() {
   };
 
   const renderContent = () => {
-    if (selected === 'Calculadora') return <Calculator />;
+  if (selected === 'Calculadora') return <Calculator onOpenBatch={() => handleSelect('Cálculo em Lote')} />;
+    if (selected === 'Cálculo em Lote') return <CalculoEmLote />;
     if (selected === 'Gramaturas') return <Gramaturas />;
     if (selected === 'Configurações') return <Settings />;
 

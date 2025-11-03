@@ -31,7 +31,7 @@ async function fetchJson(path, options) {
   throw lastError || new Error('Falha na requisição');
 }
 
-export default function Calculator() {
+export default function Calculator({ onOpenBatch }) {
   const { settings } = useSettings();
   // Opções carregadas da API
   const [gramaturas, setGramaturas] = useState([]);
@@ -363,6 +363,9 @@ export default function Calculator() {
         <div className="calc-actions">
           <button type="submit" className="btn-primary" disabled={!canSubmit || loading}>
             {loading ? 'Calculando...' : 'Calcular preço'}
+          </button>
+          <button type="button" className="btn-ghost" disabled="true">
+            Calcular em lote
           </button>
           {resultado && (
             <button type="button" className="btn-ghost" onClick={enviarAprovacao} disabled={sending}>
