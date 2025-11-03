@@ -48,10 +48,12 @@ export default function Calculator() {
     cliente_tem_ie: true,
     incluir_valor_silk: false,
     incluir_lateral: false,
+    incluir_desconto: false,
     incluir_alca: true,
     incluir_fundo: false,
     lateral_cm: '',
     fundo_cm: '',
+    desconto_percentual: '',
   });
 
   // Feedback
@@ -146,8 +148,18 @@ export default function Calculator() {
 
   // Handlers
   const update = (field) => (e) => {
-    const value = e?.target?.type === 'checkbox' ? e.target.checked : e.target.value;
-    setForm((f) => ({ ...f, [field]: value }));
+    const isCheckbox = e?.target?.type === 'checkbox';
+    const value = isCheckbox ? e.target.checked : e.target.value;
+    setForm((f) => {
+      const next = { ...f, [field]: value };
+      // Quando desmarca incluir_lateral, incluir_fundo ou incluir_desconto, zera o valor do campo correspondente
+      if (isCheckbox && !value) {
+        if (field === 'incluir_lateral') next.lateral_cm = '';
+        if (field === 'incluir_fundo') next.fundo_cm = '';
+        if (field === 'incluir_desconto') next.desconto_percentual = '';
+      }
+      return next;
+    });
   };
 
   const canSubmit = useMemo(() => {
@@ -182,6 +194,8 @@ export default function Calculator() {
         incluir_fundo: Boolean(form.incluir_fundo),
         lateral_cm: form.lateral_cm ? parseFloat(form.lateral_cm) : undefined,
         fundo_cm: form.fundo_cm ? parseFloat(form.fundo_cm) : undefined,
+        incluir_desconto: Boolean(form.incluir_desconto),
+        desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         incluir_valor_silk: Boolean(form.incluir_valor_silk),
         valor_silk: parseFloat(settings.valor_silk || 0),
@@ -224,6 +238,8 @@ export default function Calculator() {
           altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : undefined,
           lateral_cm: form.lateral_cm ? parseFloat(form.lateral_cm) : undefined,
           fundo_cm: form.fundo_cm ? parseFloat(form.fundo_cm) : undefined,
+            incluir_desconto: Boolean(form.incluir_desconto),
+            desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         },
       };
       const data = await fetchJson(API_PATHS.CALCULAR.replace('/calcular_preco', '/aprovacao/enviar'), {
@@ -270,6 +286,13 @@ export default function Calculator() {
             <label>Comissão (%)</label>
             <input type="number" step="0.01" min="0" placeholder="0" value={form.comissao} onChange={update('comissao')} />
           </div>
+
+          {form.incluir_desconto && (
+            <div className="calc-field">
+              <label>Desconto (%)</label>
+              <input type="number" step="0.01" min="0" max="100" placeholder="Ex.: 5" value={form.desconto_percentual} onChange={update('desconto_percentual')} />
+            </div>
+          )}
 
           {/* Campos condicionais para Lateral e Fundo (aparecem só se as checkboxes estiverem marcadas) */}
           {form.incluir_lateral && (
@@ -321,6 +344,10 @@ export default function Calculator() {
             <label>
               <input type="checkbox" checked={form.incluir_lateral} onChange={update('incluir_lateral')} />
               Incluir lateral
+            </label>
+            <label>
+              <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
+              Incluir desconto (%)
             </label>
             <label>
               <input type="checkbox" checked={form.incluir_fundo} onChange={update('incluir_fundo')} />

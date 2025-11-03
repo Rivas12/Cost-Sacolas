@@ -177,6 +177,11 @@ def calcular_preco():
     incluir_lateral = bool(data.get('incluir_lateral', False))
     incluir_alca = bool(data.get('incluir_alca', False))
     incluir_fundo = bool(data.get('incluir_fundo', False))
+    incluir_desconto = bool(data.get('incluir_desconto', False))
+    try:
+        desconto_percentual = float(data.get('desconto_percentual', 0) or 0) if incluir_desconto else 0.0
+    except Exception:
+        desconto_percentual = 0.0
     # Tamanho da alça (cm) — preferência: payload override, senão configuração (campo salvo: tamanho_alca)
     tamanho_alca_cfg = float(cfg.get('tamanho_alca', 0) or 0)
     try:
@@ -245,7 +250,8 @@ def calcular_preco():
     impostos_detalhe = [{'nome': imp[1], 'percentual': imp[0]} for imp in impostos_fixos]
     conn.close()
 
-    margem_decimal = margem / 100
+    # Decimais originais (antes de eventual desconto que reduz a margem)
+    margem_decimal_original = margem / 100
     comissao_decimal = comissao / 100
     outros_custos_decimal = outros_custos / 100
     impostos_decimal = total_impostos_fixos / 100
@@ -269,19 +275,36 @@ def calcular_preco():
     # Custo total (inclui silk e perdas)
     custo_total = round(custo_real * quantidade_total, 2)
 
-    # Soma de percentuais aplicada sobre o PREÇO FINAL (total)
-    total_percentual = margem_decimal + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
+    # Calcula o preço final usando a margem original (para comparar/mostrar economia)
+    total_percentual_original = margem_decimal_original + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
+    denom_orig = max(1e-9, (1 - total_percentual_original))
+    preco_final_sem_desconto = round(custo_total / denom_orig, 2)
+
+    # Se houver desconto, ele reduz a margem percentual aplicada
+    margem_aplicada = margem
+    if incluir_desconto:
+        try:
+            margem_aplicada = max(0.0, float(margem) - float(desconto_percentual or 0))
+        except Exception:
+            margem_aplicada = max(0.0, float(margem))
+    margem_decimal_aplicada = margem_aplicada / 100.0
+
+    # Soma de percentuais com margem aplicada
+    total_percentual = margem_decimal_aplicada + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
 
     # Preço final resolve a equação: P = custo_total + total_percentual * P  =>  P = custo_total / (1 - total_percentual)
     denom = max(1e-9, (1 - total_percentual))
     preco_final = round(custo_total / denom, 2)
 
-    # Decomposição: percentuais incidem sobre o total (preco_final)
-    valor_margem = round(preco_final * margem_decimal, 2)
+    # Decomposição: percentuais incidem sobre o preço final (já com margem aplicada)
+    valor_margem = round(preco_final * margem_decimal_aplicada, 2)
     valor_comissao = round(preco_final * comissao_decimal, 2)
     valor_outros = round(preco_final * outros_custos_decimal, 2)
     valor_impostos = round(preco_final * impostos_decimal, 2)
     valor_icms = round(preco_final * icms_decimal, 2)
+
+    # Valor economizado por causa do desconto na margem (diferença entre sem desconto e com margem aplicada)
+    valor_desconto = round(preco_final_sem_desconto - preco_final, 2) if incluir_desconto else 0.0
 
     # Verificação: custo total + componentes percentuais deve fechar o preço final
     check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms, 2)
@@ -392,6 +415,10 @@ def calcular_preco():
     'largura_utilizada_cm': round(largura_used, 2),
     'altura_utilizada_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
         'preco_final': preco_final,
+        'incluir_desconto': incluir_desconto,
+        'desconto_percentual': round(desconto_percentual, 2),
+        'margem_aplicada_percentual': round(margem_aplicada, 2),
+        'valor_desconto': round(valor_desconto, 2),
         'check': check,
         'altura_produto_cm': altura_produto,
         'aproveitamento_altura_percentual': aproveitamento_percentual,
@@ -499,13 +526,22 @@ def enviar_aprovacao():
     if extras_flags:
         linhas.extend(['', f"• Extras: {', '.join(extras_flags)}"])
 
+    # Desconto (se houver)
+    if bool(cot.get('incluir_desconto')):
+        linhas.append(f"• Desconto: {cot.get('desconto_percentual', 0)}% → {fmt_money(cot.get('valor_desconto') or 0)}")
+
     linhas.extend([
         '',
         '<b>📊 Resumo final</b>',
         f"<b>Custo total:</b> {fmt_money(custo_total)}",
         f"<b>Preço final:</b> {fmt_money(cot.get('preco_final'))}",
-        f"<b>Margem:</b> {cot.get('margem_percentual', 0)}% • {fmt_money(cot.get('valor_margem'))}",
     ])
+    # Margem: se houver desconto, mostramos margem aplicada e detalhe
+    if bool(cot.get('incluir_desconto')):
+        linhas.append(f"<b>Margem (aplicada):</b> {cot.get('margem_aplicada_percentual', 0)}% (original {cot.get('margem_percentual', 0)}% • desconto {cot.get('desconto_percentual', 0)}%) • {fmt_money(cot.get('valor_margem'))}")
+        linhas.append(f"<b>Desconto:</b> {cot.get('desconto_percentual', 0)}% • {fmt_money(cot.get('valor_desconto') or 0)}")
+    else:
+        linhas.append(f"<b>Margem:</b> {cot.get('margem_percentual', 0)}% • {fmt_money(cot.get('valor_margem'))}")
 
     # Aproveitamento (se disponível)
     if cot.get('aproveitamento_altura_percentual') is not None:
