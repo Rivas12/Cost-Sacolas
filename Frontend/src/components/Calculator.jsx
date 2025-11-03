@@ -346,12 +346,12 @@ export default function Calculator() {
               Incluir lateral
             </label>
             <label>
-              <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
-              Incluir desconto (%)
-            </label>
-            <label>
               <input type="checkbox" checked={form.incluir_fundo} onChange={update('incluir_fundo')} />
               Incluir fundo
+            </label>
+            <label>
+              <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
+              Incluir desconto (%)
             </label>
             <label>
               <input type="checkbox" checked={form.incluir_valor_silk} onChange={update('incluir_valor_silk')} />
