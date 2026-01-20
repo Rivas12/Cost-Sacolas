@@ -1,17 +1,23 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file, current_app
+from app.supabase_client import get_client
 from app.models.gramatura import Gramatura
-from app.models.imposto_fixo import DB_PATH as DB_IMPOSTO
-from app.models.icms_estado import DB_PATH as DB_ICMS
 from app.models.configuracoes import get_configuracoes, update_configuracoes
 import os
 from urllib import request as urlrequest
 from urllib import parse as urlparse
 from flask_cors import cross_origin
-import sqlite3
 import json
 import ssl
 import html
 import math
+import io
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+from reportlab.lib.units import mm
 try:
     import certifi
     _CAFILE = certifi.where()
@@ -29,10 +35,308 @@ def _tls_context():
         return None
 
 api_bp = Blueprint('api', __name__)
+
+
+@api_bp.route('/canvas/bases', methods=['GET'])
+def listar_bases_canvas():
+    """Lista arquivos públicos do bucket CanvasImage e retorna URLs acessíveis."""
+    bucket = os.environ.get('CANVAS_BUCKET', 'CanvasImage')
+    client = get_client()
+
+    try:
+        objects = client.storage.from_('CanvasImage').list()
+    except Exception as e:
+        return jsonify({'error': f'Erro ao listar bucket {bucket}: {e}'}), 500
+
+    files = []
+    for obj in objects:
+        print("achou!")
+        name = obj.get('name') if isinstance(obj, dict) else getattr(obj, 'name', None)
+        if not name:
+            continue
+        try:
+            public_url = client.storage.from_(bucket).get_public_url(name)
+        except Exception:
+            public_url = None
+        files.append({'name': name, 'url': public_url})
+    return jsonify(files)
+
+
+@api_bp.route('/batch/pdf', methods=['POST'])
+def gerar_pdf_batch():
+    data = request.get_json() or {}
+    itens = data.get('itens') or []
+    if not isinstance(itens, list) or len(itens) == 0:
+        return jsonify({'error': 'Envie uma lista de itens para gerar o PDF.'}), 400
+
+    # Monta documento em memória
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    styles = getSampleStyleSheet()
+    story = []
+
+    agora = datetime.now()
+    titulo = f"Cálculo em Lote — {agora.strftime('%d/%m/%Y %H:%M')}"
+    story.append(Paragraph(titulo, styles['Title']))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Total de itens: {len(itens)}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Cabeçalho e linhas
+    header = ['Nome', 'Largura (cm)', 'Altura (cm)', 'Lateral (cm)', 'Fundo (cm)', 'Alça?']
+    rows = [header]
+    for it in itens:
+        rows.append([
+            it.get('nome') or '-',
+            str(it.get('largura_cm') or '-'),
+            str(it.get('altura_cm') or '-'),
+            str(it.get('lateral_cm') or '-'),
+            str(it.get('fundo_cm') or '-'),
+            'Sim' if it.get('incluir_alca') else 'Não'
+        ])
+
+    table = Table(rows, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00bfff')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f5f6fa')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d0d7de')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fbff')])
+    ]))
+
+    story.append(table)
+    doc.build(story)
+    buffer.seek(0)
+
+    filename = f"calculo-lote-{agora.strftime('%Y-%m-%d')}.pdf"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
+
+
+@api_bp.route('/batch/pdf-precos', methods=['POST'])
+def gerar_pdf_batch_precos():
+    payload = request.get_json() or {}
+    itens = payload.get('itens') or []
+    contexto = payload.get('contexto') or {}
+
+    # Validações básicas para retornar erro claro ao front
+    if not isinstance(itens, list) or len(itens) == 0:
+        return jsonify({'error': 'Envie uma lista de itens para gerar o PDF.'}), 400
+    if not contexto.get('gramatura_id') and not contexto.get('gramatura_nome'):
+        return jsonify({'error': 'Informe gramatura_id ou gramatura_nome no contexto.'}), 400
+
+    resultados = []
+    try:
+        with current_app.test_client() as client:
+            for it in itens:
+                base_payload = {**contexto}
+                base_payload['largura_cm'] = it.get('largura_cm')
+                base_payload['altura_cm'] = it.get('altura_cm')
+                base_payload['lateral_cm'] = it.get('lateral_cm')
+                base_payload['fundo_cm'] = it.get('fundo_cm')
+                base_payload['incluir_alca'] = bool(it.get('incluir_alca'))
+                base_payload['incluir_lateral'] = True
+                base_payload['incluir_fundo'] = bool(it.get('fundo_cm'))
+
+                try:
+                    res = client.post('/api/calcular_preco', json=base_payload)
+                    data = res.get_json() if res else None
+                except Exception:
+                    res = None
+                    data = None
+
+                if not res or res.status_code != 200 or not data:
+                    resultados.append({
+                        'nome': it.get('nome') or '-',
+                        'erro': res.status_code if res else 'erro',
+                        'dados': base_payload,
+                        **it,
+                    })
+                    continue
+
+                data['nome'] = it.get('nome') or '-'
+                data['largura_cm'] = it.get('largura_cm') if it.get('largura_cm') not in (None, '') else data.get('largura_cm')
+                data['altura_cm'] = it.get('altura_cm') if it.get('altura_cm') not in (None, '') else (data.get('altura_cm') or data.get('altura_produto_cm'))
+                data['lateral_cm'] = it.get('lateral_cm') if it.get('lateral_cm') not in (None, '') else data.get('lateral_cm')
+                data['fundo_cm'] = it.get('fundo_cm') if it.get('fundo_cm') not in (None, '') else data.get('fundo_cm')
+                data['incluir_alca'] = bool(it.get('incluir_alca'))
+                data['quantidade'] = base_payload.get('quantidade') or data.get('quantidade')
+                resultados.append(data)
+    except Exception as e:
+        return jsonify({'error': f'Erro ao calcular itens: {str(e)}'}), 500
+
+    try:
+        # Monta PDF inspirado no layout comercial fornecido
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+        styles = getSampleStyleSheet()
+
+        azul = colors.HexColor('#2F80ED')
+        cinza_claro = colors.HexColor('#F2F4F7')
+        cinza_grid = colors.HexColor('#E0E0E0')
+        cinza_texto = colors.HexColor('#111827')
+
+        styles.add(ParagraphStyle(name='Titulo', parent=styles['Heading1'], fontSize=16, textColor=cinza_texto, alignment=TA_RIGHT, leading=18))
+        styles.add(ParagraphStyle(name='Logo', parent=styles['Normal'], fontSize=22, textColor=cinza_texto, leading=24))
+        styles.add(ParagraphStyle(name='SectionTitle', parent=styles['Normal'], fontSize=11.5, textColor=cinza_texto, spaceAfter=6, spaceBefore=4, leading=14))
+        styles.add(ParagraphStyle(name='SectionTitleCenter', parent=styles['SectionTitle'], alignment=TA_CENTER))
+        styles.add(ParagraphStyle(name='Muted', parent=styles['Normal'], textColor=colors.HexColor('#6b7280'), fontSize=9.5, leading=12))
+        styles.add(ParagraphStyle(name='Cell', parent=styles['Normal'], textColor=cinza_texto, fontSize=10, leading=12))
+        styles.add(ParagraphStyle(name='CellBold', parent=styles['Normal'], textColor=cinza_texto, fontSize=10, leading=12, fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='Footer', parent=styles['Normal'], fontSize=10, textColor=cinza_texto, alignment=TA_CENTER, leading=14))
+
+        story = []
+        agora = datetime.now()
+
+        def fmt_money(val):
+            try:
+                num = float(val)
+                return f"R$ {num:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            except Exception:
+                return '-'
+
+        def fmt_num(val):
+            try:
+                num = float(val)
+                return f"{num:,.0f}".replace(',', '.')
+            except Exception:
+                return '-' if val in (None, '', '-') else str(val)
+
+        # ===== Cabeçalho =====
+        header = Table(
+            [[
+                Paragraph("<b>Eco<span color='#2F80ED'>Fiber</span></b>", styles['Logo']),
+                Paragraph("<b>COTAÇÃO COMERCIAL</b>", styles['Titulo'])
+            ]],
+            colWidths=[95*mm, 75*mm]
+        )
+        header.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ]))
+        story.append(header)
+        story.append(Spacer(1, 4))
+        story.append(Table([[""],[" "]], colWidths=[doc.width], style=[('LINEABOVE',(0,0),(-1,0),0.8,cinza_grid)]))
+        story.append(Spacer(1, 10))
+
+        # ===== Dados gerais =====
+        empresa_nome = 'FiberTNT'
+        estado_val = contexto.get('estado') or '—'
+        qtd_val = contexto.get('quantidade') or (resultados[0].get('quantidade') if resultados else None)
+        qtd_txt = (f"{int(qtd_val):,}".replace(',', '.') + ' unidades') if qtd_val else '—'
+        data_txt = agora.strftime('%d/%m/%Y')
+        hora_txt = agora.strftime('%H:%M')
+        validade_txt = '7 dias'
+
+        dados = Table(
+            [
+                ['Empresa:', empresa_nome, 'Data:', data_txt],
+                ['Estado:', estado_val, 'Hora:', hora_txt],
+                ['Quantidade:', qtd_txt, 'Validade:', validade_txt],
+            ],
+            colWidths=[27*mm, 60*mm, 22*mm, 40*mm]
+        )
+        dados.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, cinza_grid),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+            ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
+            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONT', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(dados)
+        story.append(Spacer(1, 12))
+
+        # ===== Título da tabela de produto =====
+        story.append(Table(
+            [[Paragraph('<b>DADOS DOS PRODUTOS</b>', styles['SectionTitleCenter'])]],
+            colWidths=[doc.width],
+            style=[
+                ('BACKGROUND', (0, 0), (-1, -1), cinza_claro),
+                ('PADDING', (0, 0), (-1, -1), 7),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ]
+        ))
+
+        # ===== Tabela principal =====
+        header_cols = ['Nº', 'Descrição', 'Largura', 'Altura', 'Lateral', 'Fundo', 'Preço unit.', 'Preço total']
+        rows = [header_cols]
+
+        for idx, r in enumerate(resultados, start=1):
+            preco_val = float(r.get('preco_final') or 0)
+            quantidade_val = float(r.get('quantidade') or contexto.get('quantidade') or 0)
+            preco_unit = preco_val / quantidade_val if quantidade_val else None
+
+            rows.append([
+                str(idx),
+                r.get('nome') or '-',
+                fmt_num(r.get('largura_cm')),
+                fmt_num(r.get('altura_cm')),
+                'Não' if not r.get('lateral_cm') else fmt_num(r.get('lateral_cm')),
+                'Não' if not r.get('fundo_cm') else fmt_num(r.get('fundo_cm')),
+                fmt_money(preco_unit) if preco_unit is not None else '-',
+                fmt_money(preco_val),
+            ])
+
+        tabela_styles = [
+            ('BACKGROUND', (0, 0), (-1, 0), azul),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, cinza_grid),
+            ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONT', (0, 1), (-1, -1), 'Helvetica'),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            ('ALIGN', (-2, 1), (-1, -1), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]
+        tabela = Table(rows, repeatRows=1, colWidths=[10*mm, 64*mm, 16*mm, 16*mm, 16*mm, 16*mm, 24*mm, 26*mm])
+        tabela.setStyle(TableStyle(tabela_styles))
+        story.append(tabela)
+        story.append(Spacer(1, 26))
+
+        # ===== Condições comerciais =====
+        story.append(Paragraph('<b>CONDIÇÕES COMERCIAIS</b>', styles['SectionTitle']))
+        story.append(Spacer(1, 4))
+        condicoes = [
+            '• Valores expressos em reais (R$)',
+            '• Quanto maior a quantidade, melhores as condições de negociação',
+            '• Frete não incluso (a calcular conforme CEP)',
+            '• Produção mediante aprovação da cotação',
+        ]
+        for c in condicoes:
+            story.append(Paragraph(c, styles['Cell']))
+        story.append(Spacer(1, 14))
+
+        # ===== Observações =====
+        story.append(Paragraph('<b>OBSERVAÇÕES</b>', styles['SectionTitle']))
+        story.append(Spacer(1, 4))
+        story.append(Paragraph('Caso deseje personalização, alteração de medidas ou inclusão de alça, favor solicitar nova simulação.', styles['Cell']))
+        story.append(Spacer(1, 18))
+
+        # ===== Rodapé =====
+        story.append(Paragraph('<b>FIBERTNT BRASIL</b><br/>contato@fibertnt.com.br | São Paulo – SP', styles['Footer']))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        filename = f"calculo-lote-precos-{agora.strftime('%Y-%m-%d')}.pdf"
+        return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
+    except Exception as e:
+        return jsonify({'error': f'Erro ao gerar PDF: {str(e)}'}), 500
 # Configurações (margem/outros/tema/notificações)
 @api_bp.route('/configuracoes', methods=['GET'])
 def get_configs():
-    return jsonify(get_configuracoes())
+    try:
+        return jsonify(get_configuracoes(require_existing=True))
+    except LookupError as e:
+        return jsonify({'error': str(e)}), 404
 
 @api_bp.route('/configuracoes', methods=['PUT'])
 def put_configs():
@@ -48,7 +352,10 @@ def put_configs():
     )
     if not ok:
         return jsonify({'error': 'Nada para atualizar'}), 400
-    return jsonify(get_configuracoes())
+    try:
+        return jsonify(get_configuracoes(require_existing=True))
+    except LookupError as e:
+        return jsonify({'error': str(e)}), 404
 
 
 # Consultar todas gramaturas
@@ -60,11 +367,12 @@ def get_gramaturas():
 # Consultar todos impostos fixos
 @api_bp.route('/impostos_fixos', methods=['GET'])
 def get_impostos_fixos():
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, nome, valor FROM impostos_fixos')
-    impostos = [{'id': row[0], 'nome': row[1], 'valor': row[2]} for row in cursor.fetchall()]
-    conn.close()
+    client = get_client()
+    resp = client.table('impostos').select('id, nome, valor').order('id').execute()
+    impostos = [
+        {'id': row.get('id'), 'nome': row.get('nome'), 'valor': float(row.get('valor') or 0.0)}
+        for row in (resp.data or [])
+    ]
     return jsonify(impostos)
 
 # Criar imposto fixo
@@ -75,12 +383,9 @@ def create_imposto_fixo():
     valor = data.get('valor')
     if not nome or valor is None:
         return jsonify({'error': 'Campos nome e valor são obrigatórios'}), 400
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO impostos_fixos (nome, valor) VALUES (?, ?)', (nome, float(valor)))
-    conn.commit()
-    new_id = cursor.lastrowid
-    conn.close()
+    client = get_client()
+    resp = client.table('impostos').insert({'nome': nome, 'valor': float(valor)}).execute()
+    new_id = resp.data[0].get('id') if resp.data else None
     return jsonify({'id': new_id, 'nome': nome, 'valor': float(valor)}), 201
 
 # Atualizar imposto fixo
@@ -91,37 +396,113 @@ def update_imposto_fixo(id: int):
     valor = data.get('valor')
     if nome is None and valor is None:
         return jsonify({'error': 'Informe nome e/ou valor para atualizar'}), 400
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    if nome is not None and valor is not None:
-        cursor.execute('UPDATE impostos_fixos SET nome=?, valor=? WHERE id=?', (nome, float(valor), id))
-    elif nome is not None:
-        cursor.execute('UPDATE impostos_fixos SET nome=? WHERE id=?', (nome, id))
-    else:
-        cursor.execute('UPDATE impostos_fixos SET valor=? WHERE id=?', (float(valor), id))
-    conn.commit()
-    conn.close()
+    client = get_client()
+    updates = {}
+    if nome is not None:
+        updates['nome'] = nome
+    if valor is not None:
+        updates['valor'] = float(valor)
+    if not updates:
+        return jsonify({'error': 'Nada para atualizar'}), 400
+    client.table('impostos').update(updates).eq('id', id).execute()
     return jsonify({'message': 'Imposto fixo atualizado'})
 
 # Deletar imposto fixo
 @api_bp.route('/impostos_fixos/<int:id>', methods=['DELETE'])
 def delete_imposto_fixo(id: int):
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM impostos_fixos WHERE id=?', (id,))
-    conn.commit()
-    conn.close()
+    client = get_client()
+    client.table('impostos').delete().eq('id', id).execute()
     return jsonify({'message': 'Imposto fixo removido'})
 
 # Consultar ICMS por estado
 @api_bp.route('/icms_estados', methods=['GET'])
 def get_icms_estados():
-    conn = sqlite3.connect(DB_ICMS)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, estado, aliquota, atualizado_em FROM icms_estados')
-    estados = [{'id': row[0], 'estado': row[1], 'aliquota': row[2], 'atualizado_em': row[3]} for row in cursor.fetchall()]
-    conn.close()
+    client = get_client()
+    resp = client.table('icms_estados').select('id, estado, aliquota, atualizado_em').order('estado').execute()
+    estados = [
+        {
+            'id': row.get('id'),
+            'estado': row.get('estado'),
+            'aliquota': float(row.get('aliquota') or 0.0),
+            'atualizado_em': str(row.get('atualizado_em')) if row.get('atualizado_em') is not None else None,
+        }
+        for row in (resp.data or [])
+    ]
     return jsonify(estados)
+
+
+# CRUD sacolas_lote (Supabase)
+@api_bp.route('/sacolas_lote', methods=['GET'])
+def listar_sacolas_lote():
+    client = get_client()
+    resp = client.table('sacolas_lote').select('*').order('id').execute()
+    return jsonify(resp.data or [])
+
+
+@api_bp.route('/sacolas_lote', methods=['POST'])
+def criar_sacola_lote():
+    data = request.get_json() or {}
+    try:
+        nome = (data.get('nome') or '').strip()
+        largura_cm = float(data.get('largura_cm'))
+        altura_cm = float(data.get('altura_cm'))
+    except Exception:
+        return jsonify({'error': 'Campos nome, largura_cm e altura_cm são obrigatórios e devem ser válidos.'}), 400
+    lateral_cm = data.get('lateral_cm')
+    fundo_cm = data.get('fundo_cm')
+    tem_alca = bool(data.get('tem_alca'))
+
+    payload = {
+        'nome': nome,
+        'largura_cm': float(largura_cm),
+        'altura_cm': float(altura_cm),
+        'lateral_cm': float(lateral_cm) if lateral_cm not in (None, '') else None,
+        'fundo_cm': float(fundo_cm) if fundo_cm not in (None, '') else None,
+        'tem_alca': tem_alca,
+    }
+    client = get_client()
+    resp = client.table('sacolas_lote').insert(payload).execute()
+    created = resp.data[0] if resp.data else payload
+    return jsonify(created), 201
+
+
+@api_bp.route('/sacolas_lote/<int:id>', methods=['PUT'])
+def atualizar_sacola_lote(id: int):
+    data = request.get_json() or {}
+    updates = {}
+
+    if 'nome' in data:
+        updates['nome'] = (data.get('nome') or '').strip()
+    if 'largura_cm' in data:
+        try:
+            updates['largura_cm'] = float(data.get('largura_cm'))
+        except Exception:
+            return jsonify({'error': 'largura_cm inválida'}), 400
+    if 'altura_cm' in data:
+        try:
+            updates['altura_cm'] = float(data.get('altura_cm'))
+        except Exception:
+            return jsonify({'error': 'altura_cm inválida'}), 400
+    if 'lateral_cm' in data:
+        updates['lateral_cm'] = float(data.get('lateral_cm')) if data.get('lateral_cm') not in (None, '') else None
+    if 'fundo_cm' in data:
+        updates['fundo_cm'] = float(data.get('fundo_cm')) if data.get('fundo_cm') not in (None, '') else None
+    if 'tem_alca' in data:
+        updates['tem_alca'] = bool(data.get('tem_alca'))
+
+    if not updates:
+        return jsonify({'error': 'Nada para atualizar'}), 400
+
+    client = get_client()
+    resp = client.table('sacolas_lote').update(updates).eq('id', id).execute()
+    return jsonify(resp.data[0] if resp.data else {**updates, 'id': id})
+
+
+@api_bp.route('/sacolas_lote/<int:id>', methods=['DELETE'])
+def remover_sacola_lote(id: int):
+    client = get_client()
+    client.table('sacolas_lote').delete().eq('id', id).execute()
+    return jsonify({'message': 'Removido'})
 
 # Adicionar gramatura
 @api_bp.route('/gramaturas', methods=['POST'])
@@ -137,25 +518,21 @@ def add_gramatura():
 @api_bp.route('/gramaturas/<int:id>', methods=['PUT'])
 def edit_gramatura(id):
     data = request.get_json()
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    # Atualiza gramatura, preco e opcionalmente altura_cm
+    client = get_client()
+    updates = {
+        'gramatura': data.get('gramatura'),
+        'preco': data.get('preco'),
+    }
     if 'altura_cm' in data:
-        cursor.execute('UPDATE gramaturas SET gramatura=?, preco=?, altura_cm=? WHERE id=?', (data['gramatura'], data['preco'], data.get('altura_cm'), id))
-    else:
-        cursor.execute('UPDATE gramaturas SET gramatura=?, preco=? WHERE id=?', (data['gramatura'], data['preco'], id))
-    conn.commit()
-    conn.close()
+        updates['altura_cm'] = data.get('altura_cm')
+    client.table('gramaturas').update(updates).eq('id', id).execute()
     return jsonify({'message': 'Gramatura editada!'})
 
 # Deletar gramatura
 @api_bp.route('/gramaturas/<int:id>', methods=['DELETE'])
 def delete_gramatura(id):
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM gramaturas WHERE id=?', (id,))
-    conn.commit()
-    conn.close()
+    client = get_client()
+    client.table('gramaturas').delete().eq('id', id).execute()
     return jsonify({'message': 'Gramatura deletada!'})
 
 # Substitui calcular_preco_final por uma rota que busca a gramatura pelo id ou nome e retorna todas as etapas do cálculo
@@ -209,28 +586,25 @@ def calcular_preco():
     if cliente_tem_ie and estado != 'SP':
         icms = 4.0
     else:
-        conn = sqlite3.connect(DB_ICMS)
-        cursor = conn.cursor()
-        cursor.execute('SELECT aliquota FROM icms_estados WHERE estado=?', (estado,))
-        row = cursor.fetchone()
-        icms = row[0] if row else 0
-        conn.close()
+        client = get_client()
+        resp_icms = client.table('icms_estados').select('aliquota').eq('estado', estado).limit(1).execute()
+        row = resp_icms.data[0] if resp_icms.data else None
+        icms = float(row.get('aliquota')) if row and row.get('aliquota') is not None else 0.0
 
     # Buscar gramatura
-    conn = sqlite3.connect(DB_IMPOSTO)
-    cursor = conn.cursor()
+    client = get_client()
     if gramatura_id:
-        cursor.execute('SELECT preco, gramatura, altura_cm FROM gramaturas WHERE id=?', (gramatura_id,))
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('id', gramatura_id).limit(1).execute()
     elif gramatura_nome:
-        cursor.execute('SELECT preco, gramatura, altura_cm FROM gramaturas WHERE gramatura=?', (gramatura_nome,))
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('gramatura', gramatura_nome).limit(1).execute()
     else:
         return jsonify({'error': 'Informe gramatura_id ou gramatura_nome'}), 400
-    row = cursor.fetchone()
+    row = resp_gram.data[0] if resp_gram.data else None
     if not row:
-        conn.close()
         return jsonify({'error': 'Gramatura não encontrada'}), 404
-    # row: preco, gramatura, altura_cm
-    custo_un, gramatura_nome, altura_cm_db = row
+    custo_un = float(row.get('preco') or 0)
+    gramatura_nome = row.get('gramatura')
+    altura_cm_db = float(row.get('altura_cm')) if row.get('altura_cm') is not None else None
     # altura do produto solicitada (pode vir no payload) - em cm
     # Validação: altura_cm é obrigatória e deve ser um número positivo
     altura_produto = None
@@ -244,11 +618,10 @@ def calcular_preco():
         return jsonify({'error': 'Campo altura_cm inválido.'}), 400
 
     # Buscar impostos fixos
-    cursor.execute('SELECT valor, nome FROM impostos_fixos')
-    impostos_fixos = cursor.fetchall()
-    total_impostos_fixos = sum([imp[0] for imp in impostos_fixos])
-    impostos_detalhe = [{'nome': imp[1], 'percentual': imp[0]} for imp in impostos_fixos]
-    conn.close()
+    resp_impostos = client.table('impostos').select('nome, valor').execute()
+    impostos_fixos = resp_impostos.data or []
+    total_impostos_fixos = sum([float(imp.get('valor') or 0) for imp in impostos_fixos])
+    impostos_detalhe = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
 
     # Decimais originais (antes de eventual desconto que reduz a margem)
     margem_decimal_original = margem / 100

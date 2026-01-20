@@ -1,70 +1,37 @@
-.calculo-lote {
-  border: 1px solid #e0e0e0;
-  padding: 16px;
-  border-radius: 8px;
-  background: #fff;
-  max-width: 720px;
-  margin: 12px auto;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+.calculo-lote__table input {
+  width: 100%;
 }
 
-.calculo-lote__title {
-  margin: 0 0 12px 0;
-  font-size: 1.25rem;
-  color: #222;
+.calculo-lote__table input[type="number"] {
+  text-align: right;
 }
 
-.calculo-lote__form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.calculo-lote__table .checkbox-cell {
+  text-align: center;
+  width: 80px;
 }
 
-.calculo-lote__label {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.95rem;
-  color: #333;
-}
-
-.calculo-lote__textarea {
-  margin-top: 6px;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-family: inherit;
-  resize: vertical;
-}
-
-.calculo-lote__select {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-}
-
-.calculo-lote__actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.calculo-lote__btn {
-  background: #2b6cb0;
-  color: #fff;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
+.calculo-lote__table .checkbox-cell input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: #00bfff;
   cursor: pointer;
+  border-radius: 6px;
+  margin: 0;
 }
 
-.calculo-lote__btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.calculo-lote__table td:last-child,
+.calculo-lote__table th:last-child {
+  text-align: right;
 }
 
-.calculo-lote__note {
-  margin-top: 10px;
-  font-size: 0.85rem;
-  color: #666;
+.calculo-lote__new-row {
+  background: #f8fafc;
+}
+
+@media (max-width: 900px) {
+  .calculo-lote__table {
+    display: block;
+    overflow-x: auto;
+  }
 }

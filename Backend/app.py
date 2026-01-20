@@ -1,11 +1,8 @@
 from flask import Flask, request, jsonify
-import sqlite3
+from app.supabase_client import get_client
 import os
 
 app = Flask(__name__)
-
-DB_PATH = os.environ.get('DB_PATH', 'app/database.db')
-
 
 def calcular_preco_final(custo_un, largura_cm, imposto, margem, comissao, outros_custos, quantidade, ):
     imposto_decimal = imposto / 100
@@ -61,19 +58,18 @@ def calcular_preco_final_api():
     quantidade = int(data.get('quantidade', 1))
 
     # Buscar gramatura
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    client = get_client()
     if gramatura_id:
-        cursor.execute('SELECT preco, gramatura FROM gramaturas WHERE id=?', (gramatura_id,))
+        resp = client.table('gramaturas').select('preco, gramatura').eq('id', gramatura_id).limit(1).execute()
     elif gramatura_nome:
-        cursor.execute('SELECT preco, gramatura FROM gramaturas WHERE gramatura=?', (gramatura_nome,))
+        resp = client.table('gramaturas').select('preco, gramatura').eq('gramatura', gramatura_nome).limit(1).execute()
     else:
         return jsonify({'error': 'Informe gramatura_id ou gramatura_nome'}), 400
-    row = cursor.fetchone()
-    conn.close()
+    row = resp.data[0] if resp.data else None
     if not row:
         return jsonify({'error': 'Gramatura não encontrada'}), 404
-    custo_un, gramatura_nome = row
+    custo_un = float(row.get('preco') or 0)
+    gramatura_nome = row.get('gramatura')
 
     imposto_decimal = imposto / 100
     margem_decimal = margem / 100

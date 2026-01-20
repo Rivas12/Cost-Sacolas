@@ -1,0 +1,6 @@
+flask>=3.0,<4
+flask-cors>=4.0,<5
+python-dotenv>=1.0,<2
+supabase>=2.5,<3
+reportlab==4.2.5
+certifi>=2024.0.0

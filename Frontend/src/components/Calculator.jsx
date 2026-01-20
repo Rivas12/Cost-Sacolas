@@ -220,6 +220,76 @@ export default function Calculator({ onOpenBatch }) {
     }
   };
 
+  const canBatch = useMemo(() => {
+    const quantidadeVal = parseInt(form.quantidade, 10);
+    return Boolean(form.gramatura_id) && quantidadeVal > 0;
+  }, [form.gramatura_id, form.quantidade]);
+
+  const handleBatchPdf = async () => {
+    try {
+      const itensSupabase = await fetchJson('/sacolas_lote');
+      const itens = Array.isArray(itensSupabase) ? itensSupabase : [];
+      if (!itens.length) {
+        window.alert('Nenhum tamanho salvo em lote. Vá em Cálculo em Lote e adicione itens (dados vêm do Supabase).');
+        return;
+      }
+      if (!form.gramatura_id) {
+        window.alert('Selecione a gramatura antes de calcular em lote.');
+        return;
+      }
+      if (!form.estado) {
+        window.alert('Selecione o estado antes de calcular em lote.');
+        return;
+      }
+
+      const contexto = {
+        gramatura_id: Number(form.gramatura_id),
+        margem: parseFloat(settings.margem || '0'),
+        comissao: parseFloat(form.comissao || '0'),
+        outros_custos: parseFloat(settings.outros_custos || '0'),
+        quantidade: parseInt(form.quantidade || '1'),
+        estado: form.estado,
+        cliente_tem_ie: Boolean(form.cliente_tem_ie),
+        incluir_valor_silk: Boolean(form.incluir_valor_silk),
+        valor_silk: settings.valor_silk ? parseFloat(settings.valor_silk) : undefined,
+        incluir_desconto: Boolean(form.incluir_desconto),
+        desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
+        perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
+        tamanho_alca: settings.tamanho_alca ? parseFloat(settings.tamanho_alca) : undefined,
+      };
+
+      const itensPayload = itens.map((it) => ({
+        nome: it.nome || '',
+        largura_cm: it.largura_cm != null ? Number(it.largura_cm) : undefined,
+        altura_cm: it.altura_cm != null ? Number(it.altura_cm) : undefined,
+        lateral_cm: it.lateral_cm != null && it.lateral_cm !== '' ? Number(it.lateral_cm) : undefined,
+        fundo_cm: it.fundo_cm != null && it.fundo_cm !== '' ? Number(it.fundo_cm) : undefined,
+        incluir_alca: Boolean(it.tem_alca ?? it.incluir_alca ?? it.alca ?? it.temAlca),
+      }));
+
+      const res = await fetch('/api/batch/pdf-precos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens: itensPayload, contexto }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || 'Falha ao gerar PDF em lote');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'calculo-lote-precos.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err?.message || 'Erro ao gerar PDF em lote.');
+    }
+  };
+
   const resetar = () => {
     setResultado(null);
     setError('');
@@ -364,7 +434,12 @@ export default function Calculator({ onOpenBatch }) {
           <button type="submit" className="btn-primary" disabled={!canSubmit || loading}>
             {loading ? 'Calculando...' : 'Calcular preço'}
           </button>
-          <button type="button" className="btn-ghost" disabled="true">
+          <button
+            type="button"
+            className="btn-success"
+            onClick={handleBatchPdf}
+            disabled={!canBatch || loading}
+          >
             Calcular em lote
           </button>
           {resultado && (

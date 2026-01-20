@@ -5,6 +5,7 @@ import './Sidebar.css';
 const menuItems = [
   { icon: '💰', label: 'Calculadora' },
   { icon: '📦', label: 'Cálculo em Lote' },
+  { icon: '🖼️', label: 'Inserir Logo' },
   { icon: '🧮', label: 'Gramaturas'},
   { icon: '⚙️', label: 'Configurações' },
 ];

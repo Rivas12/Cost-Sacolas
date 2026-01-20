@@ -1,21 +1,8 @@
-import sqlite3
-import os
-
-DB_PATH = os.environ.get('DB_PATH', 'app/database.db')
+from app.supabase_client import get_client
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS gramaturas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            gramatura TEXT NOT NULL,
-            preco REAL NOT NULL,
-            altura_cm REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # Assumimos que a tabela já existe na Supabase
+    return True
 
 class Gramatura:
     def __init__(self, gramatura, preco, altura_cm=None, id=None):
@@ -26,17 +13,25 @@ class Gramatura:
 
     @staticmethod
     def add(gramatura, preco, altura_cm=None):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO gramaturas (gramatura, preco, altura_cm) VALUES (?, ?, ?)', (gramatura, preco, altura_cm))
-        conn.commit()
-        conn.close()
+        client = get_client()
+        resp = client.table('gramaturas').insert({
+            'gramatura': gramatura,
+            'preco': preco,
+            'altura_cm': altura_cm,
+        }).execute()
+        return resp.data[0]['id'] if resp.data else None
 
     @staticmethod
     def get_all():
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, gramatura, preco, altura_cm FROM gramaturas')
-        rows = cursor.fetchall()
-        conn.close()
-        return [Gramatura(id=row[0], gramatura=row[1], preco=row[2], altura_cm=row[3]) for row in rows]
+        client = get_client()
+        resp = client.table('gramaturas').select('id, gramatura, preco, altura_cm').order('id').execute()
+        rows = resp.data or []
+        return [
+            Gramatura(
+                id=row.get('id'),
+                gramatura=row.get('gramatura'),
+                preco=float(row.get('preco') or 0.0),
+                altura_cm=float(row.get('altura_cm')) if row.get('altura_cm') is not None else None,
+            )
+            for row in rows
+        ]

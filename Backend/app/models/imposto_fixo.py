@@ -1,20 +1,10 @@
-import sqlite3
-import os
+from app.supabase_client import get_client
 
-DB_PATH = os.environ.get('DB_PATH', 'app/database.db')
 
 def init_imposto_fixo():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS impostos_fixos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            valor REAL NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # Assumimos que a tabela já existe na Supabase
+    return True
+
 
 def populate_impostos_fixos():
     impostos = [
@@ -25,16 +15,28 @@ def populate_impostos_fixos():
         ("ISS", 2.0),
         ("INSS Patronal", 20.0),
         ("FGTS", 8.0),
-        ("Simples Nacional", 0.0) # caso não se aplique, manter 0
+        ("Simples Nacional", 0.0)  # caso não se aplique, manter 0
     ]
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    for nome, valor in impostos:
-        cursor.execute('''
-            INSERT OR IGNORE INTO impostos_fixos (nome, valor)
-            VALUES (?, ?)
-        ''', (nome, valor))
-    conn.commit()
-    conn.close()
+    client = get_client()
 
-init_imposto_fixo()
+    try:
+        # Tenta upsert quando há constraint única
+        client.table('impostos').upsert(
+            [{'nome': nome, 'valor': valor} for nome, valor in impostos],
+            on_conflict='nome'
+        ).execute()
+    except Exception:
+        # Fallback: insere somente os que não existem para evitar erro de ON CONFLICT
+        try:
+            existentes = client.table('impostos').select('nome').execute().data or []
+            nomes_existentes = {row.get('nome') for row in existentes}
+            novos = [
+                {'nome': nome, 'valor': valor}
+                for nome, valor in impostos
+                if nome not in nomes_existentes
+            ]
+            if novos:
+                client.table('impostos').insert(novos).execute()
+        except Exception:
+            # em último caso, ignore para não quebrar boot
+            pass

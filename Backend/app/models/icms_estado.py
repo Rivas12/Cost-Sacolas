@@ -1,21 +1,10 @@
-import sqlite3
-import os
+from app.supabase_client import get_client
 
-DB_PATH = os.environ.get('DB_PATH', 'app/database.db')
 
 def init_icms_estado():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS icms_estados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            estado TEXT NOT NULL,
-            aliquota REAL NOT NULL,
-            atualizado_em TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # Assumimos que a tabela já existe na Supabase
+    return True
+
 
 def populate_icms_estados():
     dados = [
@@ -28,15 +17,27 @@ def populate_icms_estados():
     ]
 
     from datetime import date
-    hoje = date.today().isoformat()
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    for estado, aliquota in dados:
-        cursor.execute('''
-            INSERT OR IGNORE INTO icms_estados (estado, aliquota, atualizado_em)
-            VALUES (?, ?, ?)
-        ''', (estado, aliquota, hoje))
-    conn.commit()
-    conn.close()
 
-init_icms_estado()
+    hoje = date.today().isoformat()
+    client = get_client()
+    try:
+        client.table('icms_estados').upsert(
+            [
+                {'estado': estado, 'aliquota': aliquota, 'atualizado_em': hoje}
+                for estado, aliquota in dados
+            ],
+            on_conflict='estado'
+        ).execute()
+    except Exception:
+        try:
+            existentes = client.table('icms_estados').select('estado').execute().data or []
+            estados_existentes = {row.get('estado') for row in existentes}
+            novos = [
+                {'estado': estado, 'aliquota': aliquota, 'atualizado_em': hoje}
+                for estado, aliquota in dados
+                if estado not in estados_existentes
+            ]
+            if novos:
+                client.table('icms_estados').insert(novos).execute()
+        except Exception:
+            pass
