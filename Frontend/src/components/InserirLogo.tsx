@@ -10,6 +10,12 @@ type LogoLayer = {
   scale: number;
 };
 
+type BaseOption = {
+  name: string;
+  url: string | null;
+  path?: string;
+};
+
 const TARGET_SQUARE_SIZE = 1000;
 
 function makeId() {
@@ -22,7 +28,10 @@ function makeId() {
 export default function InserirLogo() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [baseImage, setBaseImage] = useState<HTMLImageElement | null>(null);
-  const [baseOptions, setBaseOptions] = useState<{ name: string; url: string | null }[]>([]);
+  const [baseOptions, setBaseOptions] = useState<BaseOption[]>([]);
+  const [folderOptions, setFolderOptions] = useState<string[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string>('');
+  const [loadingFolders, setLoadingFolders] = useState<boolean>(false);
   const [baseSource, setBaseSource] = useState<string>('');
   const [loadingBase, setLoadingBase] = useState<boolean>(false);
   const [logos, setLogos] = useState<LogoLayer[]>([]);
@@ -75,33 +84,92 @@ export default function InserirLogo() {
     };
   };
 
-  // Carrega lista do backend e define primeira base como padrão
+  // Lista pastas (opiniões) no bucket e carrega as imagens da primeira pasta
   useEffect(() => {
-    const fetchBases = async () => {
+    const fetchFolders = async () => {
+      setLoadingFolders(true);
       try {
-        const res = await fetch('/api/canvas/bases');
-        if (!res.ok) throw new Error('Erro ao buscar bases');
+        const res = await fetch('/api/canvas/pastas');
+        if (!res.ok) throw new Error('Erro ao buscar pastas');
         const data = await res.json();
-        if (Array.isArray(data) && data.length) {
-          setBaseOptions(data);
-          const first = data[0];
-          if (first?.url) {
-            setBaseSource(first.url);
-            loadBaseFromSrc(first.url);
-            setHint('Base carregada do bucket.');
-          } else {
-            setHint('Nenhuma base com URL disponível.');
-          }
+        const folders: string[] = Array.isArray(data?.folders)
+          ? data.folders.map((f: any) => (typeof f === 'string' ? f : f?.name)).filter(Boolean)
+          : Array.isArray(data)
+            ? data.filter((f) => typeof f === 'string')
+            : [];
+
+        if (folders.length) {
+          setFolderOptions(folders);
+          setSelectedFolder((prev) => prev || folders[0]);
+          setHint('Escolha a pasta e depois a base.');
         } else {
-          setHint('Nenhuma base encontrada.');
+          setFolderOptions([]);
+          setHint('Nenhuma pasta encontrada no bucket.');
         }
       } catch (e) {
-        setHint('Não foi possível carregar as bases do bucket.');
-        setBaseOptions([]);
+        console.error(e);
+        setFolderOptions([]);
+        setHint('Não foi possível carregar as pastas do bucket.');
+      } finally {
+        setLoadingFolders(false);
       }
     };
-    fetchBases();
+    fetchFolders();
   }, []);
+
+  // Carrega imagens da pasta selecionada
+  useEffect(() => {
+    if (!selectedFolder) {
+      setBaseOptions([]);
+      setBaseImage(null);
+      setBaseSource('');
+      return;
+    }
+
+    const fetchBasesFromFolder = async () => {
+      setLoadingBase(true);
+      try {
+        const res = await fetch(`/api/canvas/bases?folder=${encodeURIComponent(selectedFolder)}`);
+        if (!res.ok) throw new Error('Erro ao buscar bases da pasta');
+        const data = await res.json();
+        const files = Array.isArray(data?.files) ? data.files : Array.isArray(data) ? data : [];
+
+        if (files.length) {
+          const mapped: BaseOption[] = files.map((file: any) => ({
+            name: file?.name || file?.path || 'imagem',
+            path: file?.path,
+            url: file?.url ?? null,
+          }));
+          setBaseOptions(mapped);
+          const firstWithUrl = mapped.find((f) => Boolean(f.url));
+          if (firstWithUrl?.url) {
+            setBaseSource(firstWithUrl.url);
+            loadBaseFromSrc(firstWithUrl.url);
+            setHint(`Base carregada da pasta ${selectedFolder}.`);
+          } else {
+            setBaseSource('');
+            setBaseImage(null);
+            setHint('Nenhuma imagem com URL disponível nesta pasta.');
+          }
+        } else {
+          setBaseOptions([]);
+          setBaseSource('');
+          setBaseImage(null);
+          setHint('Nenhuma imagem encontrada nesta pasta.');
+        }
+      } catch (e) {
+        console.error(e);
+        setBaseOptions([]);
+        setBaseSource('');
+        setBaseImage(null);
+        setHint('Não foi possível carregar as bases da pasta.');
+      } finally {
+        setLoadingBase(false);
+      }
+    };
+
+    fetchBasesFromFolder();
+  }, [selectedFolder]);
 
   // Redesenha canvas sempre que algo muda
   useEffect(() => {
@@ -318,6 +386,23 @@ export default function InserirLogo() {
             </div>
           </div>
         )}
+
+        <div className="control-group">
+          <label className="input-label">Pasta no Supabase</label>
+          <select
+            value={selectedFolder}
+            onChange={(e) => setSelectedFolder(e.target.value)}
+            disabled={loadingFolders || !folderOptions.length}
+          >
+            {!selectedFolder && <option value="">Selecione uma pasta</option>}
+            {folderOptions.map((folder) => (
+              <option key={folder} value={folder}>
+                {folder}
+              </option>
+            ))}
+          </select>
+          <small className="muted">Escolha a pasta (opinião); em seguida selecione a base para carregar no canvas.</small>
+        </div>
 
         <div className="control-group">
           <label className="input-label">Base do canvas (Supabase)</label>

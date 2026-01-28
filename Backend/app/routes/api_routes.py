@@ -73,29 +73,93 @@ def status():
     return jsonify(payload), status_code
 
 
-@api_bp.route('/canvas/bases', methods=['GET'])
-def listar_bases_canvas():
-    """Lista arquivos públicos do bucket CanvasImage e retorna URLs acessíveis."""
+@api_bp.route('/canvas/pastas', methods=['GET'])
+@api_bp.route('/canvas/opinioes', methods=['GET'])
+def listar_pastas_canvas():
+    """Lista todas as pastas disponíveis dentro do bucket do canvas."""
     bucket = os.environ.get('CANVAS_BUCKET', 'CanvasImage')
     client = get_client()
 
     try:
-        objects = client.storage.from_('CanvasImage').list()
+        objects = client.storage.from_(bucket).list()
     except Exception as e:
         return jsonify({'error': f'Erro ao listar bucket {bucket}: {e}'}), 500
 
-    files = []
+    folder_counts = {}
     for obj in objects:
-        print("achou!")
         name = obj.get('name') if isinstance(obj, dict) else getattr(obj, 'name', None)
         if not name:
             continue
+
+        # Supabase retorna pastas como itens sem metadata; arquivos têm metadata
+        is_folder_entry = False
         try:
-            public_url = client.storage.from_(bucket).get_public_url(name)
+            meta = obj.get('metadata') if isinstance(obj, dict) else getattr(obj, 'metadata', None)
+            obj_id = obj.get('id') if isinstance(obj, dict) else getattr(obj, 'id', None)
+            is_folder_entry = meta in (None, {}) and obj_id in (None, '')
+        except Exception:
+            is_folder_entry = False
+
+        if '/' in name:
+            folder = name.split('/', 1)[0].strip()
+        elif is_folder_entry:
+            folder = name.strip()
+        else:
+            continue
+
+        if not folder:
+            continue
+        folder_counts[folder] = folder_counts.get(folder, 0) + 1
+
+    folders = [
+        {'name': folder, 'files': count}
+        for folder, count in sorted(folder_counts.items(), key=lambda item: item[0].lower())
+    ]
+
+    return jsonify({'folders': folders})
+
+
+@api_bp.route('/canvas/bases', methods=['GET'])
+def listar_bases_canvas():
+    """Lista imagens públicas do bucket CanvasImage dentro de uma pasta (opinião)."""
+    bucket = os.environ.get('CANVAS_BUCKET', 'CanvasImage')
+    folder = (request.args.get('folder') or '').strip('/')
+    client = get_client()
+
+    list_path = folder or ''
+    try:
+        objects = client.storage.from_(bucket).list(list_path)
+    except Exception as e:
+        suffix = f" na pasta {folder}" if folder else ''
+        return jsonify({'error': f'Erro ao listar bucket {bucket}{suffix}: {e}'}), 500
+
+    allowed_ext = {'.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif'}
+    files = []
+    for obj in objects:
+        name = obj.get('name') if isinstance(obj, dict) else getattr(obj, 'name', None)
+        if not name:
+            continue
+
+        # Ignora subpastas; se quiser recursivo, precisaríamos iterar nelas
+        try:
+            meta = obj.get('metadata') if isinstance(obj, dict) else getattr(obj, 'metadata', None)
+            if meta in (None, {}):
+                continue
+        except Exception:
+            pass
+
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in allowed_ext:
+            continue
+
+        full_path = f"{list_path}/{name}" if list_path else name
+        try:
+            public_url = client.storage.from_(bucket).get_public_url(full_path)
         except Exception:
             public_url = None
-        files.append({'name': name, 'url': public_url})
-    return jsonify(files)
+        files.append({'name': name, 'path': full_path, 'url': public_url})
+
+    return jsonify({'folder': folder, 'files': files})
 
 
 @api_bp.route('/batch/pdf', methods=['POST'])
