@@ -514,6 +514,80 @@ def delete_imposto_fixo(id: int):
     client.table('impostos').delete().eq('id', id).execute()
     return jsonify({'message': 'Imposto fixo removido'})
 
+# CRUD Serviços (ex.: Silk)
+@api_bp.route('/servicos', methods=['GET'])
+def get_servicos():
+    client = get_client()
+    # Tabela tem colunas: id, nome, valor, impostos (não há imposto_percentual)
+    resp = client.table('servicos').select('id, nome, valor, impostos').order('id').execute()
+    servicos = [
+        {
+            'id': row.get('id'),
+            'nome': row.get('nome'),
+            'valor': float(row.get('valor') or 0.0),
+            'imposto_percentual': float(row.get('impostos') or 0.0),
+        }
+        for row in (resp.data or [])
+    ]
+    return jsonify(servicos)
+
+
+@api_bp.route('/servicos', methods=['POST'])
+def create_servico():
+    data = request.get_json() or {}
+    nome = data.get('nome')
+    valor = data.get('valor')
+    imposto_percentual = data.get('imposto_percentual') if 'imposto_percentual' in data else data.get('impostos')
+    if not nome or valor is None:
+        return jsonify({'error': 'Campos nome e valor são obrigatórios'}), 400
+    try:
+        valor_f = float(valor)
+        imposto_f = float(imposto_percentual or 0.0)
+    except Exception:
+        return jsonify({'error': 'Valor ou imposto inválido'}), 400
+    client = get_client()
+    resp = client.table('servicos').insert({
+        'nome': nome,
+        'valor': valor_f,
+        'impostos': imposto_f,
+    }).execute()
+    new_id = resp.data[0].get('id') if resp.data else None
+    return jsonify({'id': new_id, 'nome': nome, 'valor': valor_f, 'imposto_percentual': imposto_f}), 201
+
+
+@api_bp.route('/servicos/<int:id>', methods=['PUT'])
+def update_servico(id: int):
+    data = request.get_json() or {}
+    nome = data.get('nome')
+    valor = data.get('valor')
+    imposto_percentual = data.get('imposto_percentual') if 'imposto_percentual' in data else data.get('impostos')
+    updates = {}
+    if nome is not None:
+        updates['nome'] = nome
+    if valor is not None:
+        try:
+            updates['valor'] = float(valor)
+        except Exception:
+            return jsonify({'error': 'Valor inválido'}), 400
+    if imposto_percentual is not None:
+        try:
+            imposto_f = float(imposto_percentual)
+        except Exception:
+            return jsonify({'error': 'Imposto inválido'}), 400
+        updates['impostos'] = imposto_f
+    if not updates:
+        return jsonify({'error': 'Informe nome, valor ou imposto_percentual para atualizar'}), 400
+    client = get_client()
+    client.table('servicos').update(updates).eq('id', id).execute()
+    return jsonify({'message': 'Serviço atualizado'})
+
+
+@api_bp.route('/servicos/<int:id>', methods=['DELETE'])
+def delete_servico(id: int):
+    client = get_client()
+    client.table('servicos').delete().eq('id', id).execute()
+    return jsonify({'message': 'Serviço removido'})
+
 # Consultar ICMS por estado
 @api_bp.route('/icms_estados', methods=['GET'])
 def get_icms_estados():
@@ -648,7 +722,7 @@ def calcular_preco():
     outros_custos = float(data.get('outros_custos', cfg.get('outros_custos', 0)))
     quantidade = int(data.get('quantidade', 1))
     perdas_calibracao_un = int(data.get('perdas_calibracao_un', cfg.get('perdas_calibracao_un', 0) or 0))
-    # Silk: valor em R$ por unidade. Quando habilitado, deve ser aplicado EM CADA UNIDADE (sem rateios)
+    # Silk legado (mantido para compatibilidade, mas padrão é não incluir)
     valor_silk_cfg = float(cfg.get('valor_silk', 0) or 0)
     incluir_valor_silk = bool(data.get('incluir_valor_silk', False))
     incluir_lateral = bool(data.get('incluir_lateral', False))
@@ -679,6 +753,33 @@ def calcular_preco():
         fundo_cm = None
     # Valor unitário do silk (por unidade). Se não incluir, é 0.
     valor_silk_unit = float(data.get('valor_silk', valor_silk_cfg)) if incluir_valor_silk else 0.0
+
+    # Serviços (lista) — cada item pode ter valor e imposto_percentual
+    servicos_payload = data.get('servicos') or []
+    servicos_detalhe = []
+    valor_servicos_unit = 0.0
+    try:
+        for svc in servicos_payload:
+            try:
+                val = float(svc.get('valor', 0) or 0)
+            except Exception:
+                val = 0.0
+            try:
+                imp_pct = float(svc.get('imposto_percentual', svc.get('impostos', 0)) or 0)
+            except Exception:
+                imp_pct = 0.0
+            val_com_imposto = val + (val * imp_pct / 100.0)
+            valor_servicos_unit += val_com_imposto
+            servicos_detalhe.append({
+                'id': svc.get('id'),
+                'nome': svc.get('nome'),
+                'valor_unitario': round(val, 4),
+                'imposto_percentual': round(imp_pct, 4),
+                'valor_unitario_com_imposto': round(val_com_imposto, 4),
+            })
+    except Exception:
+        servicos_detalhe = []
+        valor_servicos_unit = 0.0
     estado = data.get('estado')
     cliente_tem_ie = data.get('cliente_tem_ie', False)
 
@@ -730,22 +831,25 @@ def calcular_preco():
     impostos_decimal = total_impostos_fixos / 100
     icms_decimal = icms / 100
 
-    # Custo por unidade do material + silk (se houver)
+    # Custo por unidade do material (sem silk) — silk será tratado como serviço separado (NF de serviço)
     # Ajustes de dimensão: lateral dobra (2x) e soma à largura; fundo soma à altura (sem dobrar)
     lateral_effective = (lateral_cm or 0) * 2.0
     largura_used = float(largura_cm or 0) + lateral_effective
 
     # custo por unidade considera a largura efetiva usada
     custo_material_unit = custo_un * (largura_used / 100)
-    custo_real = round(custo_material_unit + (valor_silk_unit or 0), 2)
+    # custo_real agora representa apenas o custo do produto (sem serviço)
+    custo_real = round(custo_material_unit, 2)
 
     # Quantidade total considerada inclui perdas de calibração (unidades extras)
     quantidade_total = max(0, quantidade + max(0, perdas_calibracao_un))
 
-    # Total de silk (por unidade x quantidade solicitada) — não considerar perdas
+    # Total de silk (por unidade x quantidade solicitada) — serviço faturado separado, sem perdas
     valor_silk_total = round((valor_silk_unit or 0) * quantidade, 2)
+    # Total de serviços (lista) — por unidade x quantidade, sem perdas
+    valor_servicos_total = round((valor_servicos_unit or 0) * quantidade, 2)
 
-    # Custo total (inclui silk e perdas)
+    # Custo total do produto (sem silk), inclui perdas de calibração
     custo_total = round(custo_real * quantidade_total, 2)
 
     # Calcula o preço final usando a margem original (para comparar/mostrar economia)
@@ -765,19 +869,22 @@ def calcular_preco():
     # Soma de percentuais com margem aplicada
     total_percentual = margem_decimal_aplicada + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
 
-    # Preço final resolve a equação: P = custo_total + total_percentual * P  =>  P = custo_total / (1 - total_percentual)
+    # Preço final do PRODUTO (sem serviços) resolve a equação: P = custo_total + total_percentual * P  =>  P = custo_total / (1 - total_percentual)
     denom = max(1e-9, (1 - total_percentual))
-    preco_final = round(custo_total / denom, 2)
+    preco_final_produto = round(custo_total / denom, 2)
+
+    # Serviços (silk) são somados por fora, sem incidência de impostos percentuais
+    preco_final_total = round(preco_final_produto + valor_silk_total + valor_servicos_total, 2)
 
     # Decomposição: percentuais incidem sobre o preço final (já com margem aplicada)
-    valor_margem = round(preco_final * margem_decimal_aplicada, 2)
-    valor_comissao = round(preco_final * comissao_decimal, 2)
-    valor_outros = round(preco_final * outros_custos_decimal, 2)
-    valor_impostos = round(preco_final * impostos_decimal, 2)
-    valor_icms = round(preco_final * icms_decimal, 2)
+    valor_margem = round(preco_final_produto * margem_decimal_aplicada, 2)
+    valor_comissao = round(preco_final_produto * comissao_decimal, 2)
+    valor_outros = round(preco_final_produto * outros_custos_decimal, 2)
+    valor_impostos = round(preco_final_produto * impostos_decimal, 2)
+    valor_icms = round(preco_final_produto * icms_decimal, 2)
 
     # Valor economizado por causa do desconto na margem (diferença entre sem desconto e com margem aplicada)
-    valor_desconto = round(preco_final_sem_desconto - preco_final, 2) if incluir_desconto else 0.0
+    valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2) if incluir_desconto else 0.0
 
     # Verificação: custo total + componentes percentuais deve fechar o preço final
     check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms, 2)
@@ -855,11 +962,11 @@ def calcular_preco():
         'gramatura_nome': gramatura_nome,
         'gramatura_altura_cm': altura_cm_db,
         # custo_un ajustado: custo unitário considerando perdas (custo_total / quantidade solicitada)
-        'custo_un': round((custo_total / max(1, quantidade)), 2),
+    'custo_un': round((custo_total / max(1, quantidade)), 2),
         'largura_cm': largura_cm,
-        # custo_real: custo por unidade incluindo silk
-        'custo_real': round(custo_real, 2),
-        'custo_total': custo_total,
+    # custo_real: custo por unidade do produto (sem serviços)
+    'custo_real': round(custo_real, 2),
+    'custo_total': custo_total,
         'margem_percentual': margem,
         'comissao_percentual': comissao,
         'outros_custos_percentual': outros_custos,
@@ -874,11 +981,13 @@ def calcular_preco():
         'valor_outros': valor_outros,
         'valor_impostos_fixos': valor_impostos,
         'valor_icms': valor_icms,
-        # Compatibilidade: mantém valor_silk como TOTAL do silk em R$
-        'valor_silk': valor_silk_total,
-        # Novos campos para clareza
-        'valor_silk_unitario': round(valor_silk_unit, 2),
-        'valor_silk_total': valor_silk_total,
+    # Serviços (ex.: silk) faturados em NF de serviço
+    'valor_silk': valor_silk_total,  # compatibilidade
+    'valor_silk_unitario': round(valor_silk_unit, 2),
+    'valor_silk_total': valor_silk_total,
+    'valor_servicos_unitario': round(valor_servicos_unit, 2),
+    'valor_servicos_total': valor_servicos_total,
+    'servicos_detalhe': servicos_detalhe,
         'incluir_valor_silk': incluir_valor_silk,
         'incluir_lateral': incluir_lateral,
         'incluir_alca': incluir_alca,
@@ -887,7 +996,10 @@ def calcular_preco():
     'fundo_cm': fundo_cm,
     'largura_utilizada_cm': round(largura_used, 2),
     'altura_utilizada_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
-        'preco_final': preco_final,
+    # Preços: produto separado de serviços
+    'preco_final_produto': preco_final_produto,
+    'preco_final_servicos': valor_silk_total + valor_servicos_total,
+    'preco_final': preco_final_total,  # mantém campo antigo como total (produto + serviços)
         'incluir_desconto': incluir_desconto,
         'desconto_percentual': round(desconto_percentual, 2),
         'margem_aplicada_percentual': round(margem_aplicada, 2),

@@ -36,7 +36,8 @@ export function SettingsBootstrapper() {
         const data = await res.json();
         if (!res.ok) return;
         if (!active) return;
-        const merged = { ...settings, ...data };
+        const { valor_silk: _ignoredSilk, ...rest } = data || {};
+        const merged = { ...settings, ...rest };
         setSettings(merged);
         try { localStorage.setItem('cost-settings', JSON.stringify(merged)); } catch {}
       } catch {}

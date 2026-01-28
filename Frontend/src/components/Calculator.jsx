@@ -7,6 +7,7 @@ const API_PATHS = {
   GRAMATURAS: '/gramaturas',
   ICMS: '/icms_estados',
   CALCULAR: '/calcular_preco',
+  SERVICOS: '/servicos',
 };
 
 const API_BASES = [
@@ -36,6 +37,9 @@ export default function Calculator({ onOpenBatch }) {
   // Opções carregadas da API
   const [gramaturas, setGramaturas] = useState([]);
   const [estados, setEstados] = useState([]);
+  const [servicos, setServicos] = useState([]);
+  const [valorSilkServico, setValorSilkServico] = useState(null);
+  const [servicosSelecionados, setServicosSelecionados] = useState([]);
 
   // Form state
   const [form, setForm] = useState({
@@ -122,9 +126,10 @@ export default function Calculator({ onOpenBatch }) {
     const fetchAll = async () => {
       try {
         setError('');
-        const [gData, eData] = await Promise.all([
+        const [gData, eData, sData] = await Promise.all([
           fetchJson(API_PATHS.GRAMATURAS),
           fetchJson(API_PATHS.ICMS),
+          fetchJson(API_PATHS.SERVICOS).catch(() => []),
         ]);
         if (!cancelled) {
           setGramaturas(gData || []);
@@ -135,6 +140,12 @@ export default function Calculator({ onOpenBatch }) {
           // Garante SP presente
           if (!estadosOrdenados.includes('SP')) estadosOrdenados.unshift('SP');
           setEstados(estadosOrdenados);
+          const listaServicos = Array.isArray(sData) ? sData : [];
+          setServicos(listaServicos);
+          const silk = listaServicos.find((s) => String(s.nome || '').toLowerCase().includes('silk'));
+          if (silk && silk.valor !== undefined && silk.valor !== null && silk.valor !== '') {
+            setValorSilkServico(Number(silk.valor) || 0);
+          }
         }
       } catch (err) {
         if (!cancelled) setError('Não foi possível carregar opções. Verifique a API.');
@@ -179,6 +190,7 @@ export default function Calculator({ onOpenBatch }) {
     setError('');
     setResultado(null);
     try {
+      const valorSilkNumber = valorSilkServico != null ? Number(valorSilkServico) : parseFloat(settings.valor_silk || 0);
       const payload = {
         gramatura_id: form.gramatura_id ? Number(form.gramatura_id) : undefined,
         largura_cm: parseFloat(form.largura_cm),
@@ -197,8 +209,17 @@ export default function Calculator({ onOpenBatch }) {
         incluir_desconto: Boolean(form.incluir_desconto),
         desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
-        incluir_valor_silk: Boolean(form.incluir_valor_silk),
-        valor_silk: parseFloat(settings.valor_silk || 0),
+        incluir_valor_silk: false,
+        valor_silk: 0,
+        servicos: (servicosSelecionados || []).map((id) => {
+          const svc = servicos.find((s) => String(s.id) === String(id));
+          return svc ? {
+            id: svc.id,
+            nome: svc.nome,
+            valor: Number(svc.valor) || 0,
+            imposto_percentual: Number(svc.imposto_percentual || svc.impostos || 0) || 0,
+          } : null;
+        }).filter(Boolean),
       };
       // Only send tamanho_alca when the option is enabled — backend will sum it into the effective height
       if (form.incluir_alca) {
@@ -250,8 +271,17 @@ export default function Calculator({ onOpenBatch }) {
         quantidade: parseInt(form.quantidade || '1'),
         estado: form.estado,
         cliente_tem_ie: Boolean(form.cliente_tem_ie),
-        incluir_valor_silk: Boolean(form.incluir_valor_silk),
-        valor_silk: settings.valor_silk ? parseFloat(settings.valor_silk) : undefined,
+        incluir_valor_silk: false,
+        valor_silk: undefined,
+        servicos: (servicosSelecionados || []).map((id) => {
+          const svc = servicos.find((s) => String(s.id) === String(id));
+          return svc ? {
+            id: svc.id,
+            nome: svc.nome,
+            valor: Number(svc.valor) || 0,
+            imposto_percentual: Number(svc.imposto_percentual || svc.impostos || 0) || 0,
+          } : null;
+        }).filter(Boolean),
         incluir_desconto: Boolean(form.incluir_desconto),
         desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
@@ -423,12 +453,38 @@ export default function Calculator({ onOpenBatch }) {
               <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
               Incluir desconto (%)
             </label>
-            <label>
-              <input type="checkbox" checked={form.incluir_valor_silk} onChange={update('incluir_valor_silk')} />
-              Incluir Silk
-            </label>
           </div>
         </div>
+
+        {servicos && servicos.length > 0 && (
+          <div className="services-box">
+            <div className="services-head">
+              <h4>Serviços (NF serviço)</h4>
+              <span className="services-hint">Selecione os serviços a incluir; são somados fora das taxas do produto.</span>
+            </div>
+            <div className="services-list">
+              {servicos.map((svc) => {
+                const checked = servicosSelecionados.includes(svc.id);
+                return (
+                  <label key={svc.id} className="service-item">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setServicosSelecionados((prev) => {
+                          const idStr = svc.id;
+                          if (e.target.checked) return [...prev, idStr];
+                          return prev.filter((p) => String(p) !== String(idStr));
+                        });
+                      }}
+                    />
+                    <span className="service-name">{svc.nome}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="calc-actions">
           <button type="submit" className="btn-primary" disabled={!canSubmit || loading}>
@@ -463,16 +519,16 @@ export default function Calculator({ onOpenBatch }) {
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
             </div>
             <div className="result-highlight">
-              <span>Preço final</span>
+              <span>Preço final (produto + serviços)</span>
               <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
             </div>
           </div>
 
           <div className="result-grid">
-            <div className="result-box"><span>Valor unitário</span><strong>R$ {(resultado.preco_final / (resultado.quantidade )).toFixed(2)}</strong></div>
-            <div className="result-box"><span>Quantidade</span><strong>{resultado.quantidade}</strong></div>
-            <div className="result-box"><span>Comissão total</span><strong>R$ {resultado.valor_comissao.toFixed(2)}</strong></div>
-            <div className="result-box"><span>Valor total</span><strong>R$ {resultado.preco_final.toFixed(2)}</strong></div>
+            <div className="result-box"><span>Valor unitário (com serviços)</span><strong>R$ {(resultado.preco_final / (resultado.quantidade )).toFixed(2)}</strong></div>
+            <div className="result-box"><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
+            <div className="result-box"><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
+            <div className="result-box"><span>Valor total (somado)</span><strong>R$ {resultado.preco_final.toFixed(2)}</strong></div>
           </div>
 
           {/* Bloco público mostrando aproveitamento da altura (visível sem desbloquear etapas) */}
@@ -578,7 +634,7 @@ export default function Calculator({ onOpenBatch }) {
                       {(() => {
                         const perdasUn = Math.max(0, Number(resultado.quantidade_total || 0) - Number(resultado.quantidade || 0));
                         const perdasVal = perdasUn * Number(resultado.custo_real || 0);
-                        const denom = Number(resultado.preco_final || 0);
+                        const denom = Number(resultado.preco_final_produto || resultado.preco_final || 0);
                         const pct = denom > 0 ? (perdasVal / denom) * 100 : 0;
                         return `${pct.toFixed(2)}%`;
                       })()}
@@ -594,7 +650,7 @@ export default function Calculator({ onOpenBatch }) {
                     <td>Custo do material</td>
                     <td>{(() => {
                       const materialVal = Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0);
-                      const denom = Number(resultado.preco_final || 0);
+                      const denom = Number(resultado.preco_final_produto || resultado.preco_final || 0);
                       const pct = denom > 0 ? (materialVal / denom) * 100 : 0;
                       return `${pct.toFixed(2)}%`;
                     })()}</td>
@@ -613,7 +669,7 @@ export default function Calculator({ onOpenBatch }) {
                   {Array.isArray(resultado.impostos_fixos_detalhe) && resultado.impostos_fixos_detalhe.length > 0 && (
                     resultado.impostos_fixos_detalhe.map((imp, idx) => {
                       const pct = Number(imp.percentual || 0);
-                      const val = Number(resultado.preco_final || 0) * (pct / 100);
+                      const val = Number(resultado.preco_final_produto || resultado.preco_final || 0) * (pct / 100);
                       return (
                         <tr key={`imp-${idx}`}>
                           <td> {imp.nome}</td>
@@ -637,26 +693,44 @@ export default function Calculator({ onOpenBatch }) {
               </table>
 
 
-               {resultado.incluir_valor_silk ? (
+              {(resultado.servicos_detalhe && resultado.servicos_detalhe.length > 0) ? (
                 <table className="result-table" style={{ marginTop: 12 }}>
                   <thead>
                     <tr>
-                      <th>Extras</th>
-                      <th>—</th>
-                      <th>Valor</th>
+                      <th>Serviços (NF serviço)</th>
+                      <th>Imposto (%)</th>
+                      <th>Valor unitário</th>
+                      <th>Valor unit. c/ imposto</th>
+                      <th>Valor total</th>
                     </tr>
                   </thead>
                   <tbody>
+                    {resultado.servicos_detalhe.map((svc, idx) => {
+                      const unit = Number(svc.valor_unitario_com_imposto ?? svc.valor_unitario ?? 0);
+                      const total = unit * Number(resultado.quantidade || 0);
+                      return (
+                        <tr key={`svc-${idx}`}>
+                          <td>{svc.nome || 'Serviço'}</td>
+                          <td>{Number(svc.imposto_percentual || 0).toFixed(2)}%</td>
+                          <td>R$ {Number(svc.valor_unitario || 0).toFixed(2)}</td>
+                          <td>R$ {unit.toFixed(2)}</td>
+                          <td>R$ {total.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
                     <tr>
-                      <td>Silk por unidade</td>
-                      <td>Incluído</td>
-                      <td>R$ {Number(resultado.valor_silk_unitario || 0).toFixed(2)}</td>
+                      <td colSpan={4} style={{textAlign:'right', fontWeight:600}}>Total serviços</td>
+                      <td style={{fontWeight:600}}>R$ {Number(resultado.valor_servicos_total || 0).toFixed(2)}</td>
                     </tr>
-                    <tr>
-                      <td>Silk total</td>
-                      <td>Incluído</td>
-                      <td>R$ {Number((resultado.valor_silk_total ?? resultado.valor_silk) || 0).toFixed(2)}</td>
-                    </tr>
+                    {Number(resultado.valor_silk_total || 0) > 0 && (
+                      <tr>
+                        <td>Silk (legado)</td>
+                        <td>—</td>
+                        <td>R$ {Number(resultado.valor_silk_unitario || 0).toFixed(2)}</td>
+                        <td>R$ {Number(resultado.valor_silk_unitario || 0).toFixed(2)}</td>
+                        <td>R$ {Number(resultado.valor_silk_total || 0).toFixed(2)}</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               ) : null}
