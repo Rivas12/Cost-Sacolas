@@ -51,7 +51,7 @@
 
 /* Tabela/impostos - inputs com sufixo */
 .input-suffix { display: flex; align-items: center; gap: 8px; }
-.input-suffix input { width: 140px; }
+.input-suffix input { width: 140px; text-align: left; }
 .suffix {
   display: inline-flex;
   align-items: center;
@@ -90,6 +90,24 @@
 .settings-card .result-table select:hover { background: #fefefe; }
 .settings-card .result-table td:first-child input { width: 100%; min-width: 220px; }
 .settings-card .result-table td:nth-child(2) input { width: 120px; text-align: right; }
+
+/* Tabela geral (serviços e impostos) */
+.settings-card .result-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 12px;
+}
+.settings-card .result-table th,
+.settings-card .result-table td {
+  padding: 10px 10px;
+  text-align: left;
+}
+.settings-card .result-table th { font-weight: 700; color: #1f2937; letter-spacing: 0.01em; }
+.settings-card .result-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.settings-card .result-table tbody tr:nth-child(odd) { background: #fafafa; }
+.settings-card .result-table tbody tr:hover { background: #f1f5f9; transition: background .12s ease; }
+.settings-card .result-table tbody td { border-bottom: 1px solid #f0f0f0; }
 
 /* Linha hover para ajudar a leitura */
 .settings-card .result-table tbody tr:hover { background: #f8fafc; } /* slate-50 */

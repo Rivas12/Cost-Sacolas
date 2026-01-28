@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from app.supabase_client import get_client, SupabaseConfigError
 from app.models.gramatura import Gramatura
+from app.models.imposto_fixo import init_imposto_fixo, ensure_impostos_fixos_defaults, IMPOSTOS_ORDEM
 from app.models.configuracoes import get_configuracoes, update_configuracoes
 import os
 from urllib import request as urlrequest
@@ -24,6 +25,17 @@ try:
     _CAFILE = certifi.where()
 except Exception:
     _CAFILE = None
+
+# Alíquotas padrão por estado (ICMS "cheio") usadas quando o cliente não possui IE
+ICMS_ESTADO_PADRAO = {
+    "AC": 19.0, "AL": 19.0, "AM": 20.0, "AP": 18.0, "BA": 20.5,
+    "CE": 20.0, "DF": 20.0, "ES": 17.0, "GO": 19.0, "MA": 23.0,
+    "MT": 17.0, "MS": 17.0, "MG": 18.0, "PA": 19.0, "PB": 20.0,
+    "PR": 19.5, "PE": 20.5, "PI": 22.5, "RJ": 20.0, "RN": 20.0,
+    "RS": 17.0, "RO": 19.5, "RR": 20.0, "SC": 17.0, "SP": 18.0,
+    "SE": 19.0, "TO": 20.0,
+}
+ESTADOS_BR = sorted(ICMS_ESTADO_PADRAO.keys())
 
 def _tls_context():
     try:
@@ -236,6 +248,8 @@ def gerar_pdf_batch_precos():
                 base_payload['lateral_cm'] = it.get('lateral_cm')
                 base_payload['fundo_cm'] = it.get('fundo_cm')
                 base_payload['incluir_alca'] = bool(it.get('incluir_alca'))
+                # Força cálculo com IE para não gerar DIFAL: usa a alíquota estadual da gramatura
+                base_payload['cliente_tem_ie'] = True
                 base_payload['incluir_lateral'] = True
                 base_payload['incluir_fundo'] = bool(it.get('fundo_cm'))
 
@@ -330,12 +344,21 @@ def gerar_pdf_batch_precos():
         data_txt = agora.strftime('%d/%m/%Y')
         hora_txt = agora.strftime('%H:%M')
         validade_txt = '7 dias'
+        cliente_tem_ie_ctx = bool(contexto.get('cliente_tem_ie'))
+        ie_txt = 'Sim' if cliente_tem_ie_ctx else 'Não'
+        try:
+            raw_icms_header = resultados[0].get('icms_percentual') if resultados else None
+            icms_header_pct = float(raw_icms_header) if raw_icms_header is not None else None
+        except Exception:
+            icms_header_pct = None
+        icms_header_txt = f"{icms_header_pct:.2f}%" if icms_header_pct is not None else '—'
 
         dados = Table(
             [
                 ['Empresa:', empresa_nome, 'Data:', data_txt],
                 ['Estado:', estado_val, 'Hora:', hora_txt],
                 ['Quantidade:', qtd_txt, 'Validade:', validade_txt],
+                ['Possui IE?', ie_txt, 'ICMS:', icms_header_txt],
             ],
             colWidths=[27*mm, 60*mm, 22*mm, 40*mm]
         )
@@ -401,6 +424,53 @@ def gerar_pdf_batch_precos():
         story.append(tabela)
         story.append(Spacer(1, 26))
 
+        # ===== Serviços (NF serviço) — opcional =====
+        servicos_ctx = contexto.get('servicos') or []
+        if servicos_ctx:
+            story.append(Table(
+                [[Paragraph('<b>SERVIÇOS</b>', styles['SectionTitleCenter'])]],
+                colWidths=[doc.width],
+                style=[
+                    ('BACKGROUND', (0, 0), (-1, -1), cinza_claro),
+                    ('PADDING', (0, 0), (-1, -1), 7),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ]
+            ))
+
+            qtd_val = contexto.get('quantidade') or (resultados[0].get('quantidade') if resultados else 0) or 0
+            srv_rows = [['Serviço', 'Preço unit.', 'Valor total']]
+            for svc in servicos_ctx:
+                try:
+                    val = float(svc.get('valor') or 0)
+                except Exception:
+                    val = 0.0
+                try:
+                    imp_pct = float(svc.get('imposto_percentual') if 'imposto_percentual' in svc else svc.get('impostos') or 0)
+                except Exception:
+                    imp_pct = 0.0
+                unit_with_tax = val + (val * imp_pct / 100.0)
+                total_val = unit_with_tax * float(qtd_val or 0)
+                srv_rows.append([
+                    svc.get('nome') or 'Serviço',
+                    fmt_money(unit_with_tax),
+                    fmt_money(total_val),
+                ])
+
+            # Usa a mesma largura total da tabela de produtos: 188 mm (64 + 44 + 80)
+            srv_table = Table(srv_rows, repeatRows=1, colWidths=[64*mm, 44*mm, 80*mm])
+            srv_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), azul),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, cinza_grid),
+                ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONT', (0, 1), (-1, -1), 'Helvetica'),
+                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('PADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(srv_table)
+            story.append(Spacer(1, 22))
+
         # ===== Condições comerciais =====
         story.append(Paragraph('<b>CONDIÇÕES COMERCIAIS</b>', styles['SectionTitle']))
         story.append(Spacer(1, 4))
@@ -462,57 +532,56 @@ def put_configs():
 @api_bp.route('/gramaturas', methods=['GET'])
 def get_gramaturas():
     gramaturas = Gramatura.get_all()
-    return jsonify([{'id': g.id, 'gramatura': g.gramatura, 'preco': g.preco, 'altura_cm': g.altura_cm} for g in gramaturas])
+    return jsonify([
+        {
+            'id': g.id,
+            'gramatura': g.gramatura,
+            'preco': g.preco,
+            'altura_cm': g.altura_cm,
+            'icms_estadual': g.icms_estadual,
+        }
+        for g in gramaturas
+    ])
 
 # Consultar todos impostos fixos
 @api_bp.route('/impostos_fixos', methods=['GET'])
 def get_impostos_fixos():
     client = get_client()
-    resp = client.table('impostos').select('id, nome, valor').order('id').execute()
+    ensure_impostos_fixos_defaults()
+    resp = client.table('impostos').select('id, nome, valor').execute()
+    rows = resp.data or []
+    # Ordena pelo IMPOSTOS_ORDEM; desconhecidos ficam ao final ordenados alfabeticamente
+    ordem_index = {nome: idx for idx, nome in enumerate(IMPOSTOS_ORDEM)}
+    rows.sort(key=lambda r: (ordem_index.get(r.get('nome'), len(IMPOSTOS_ORDEM) + 1), (r.get('nome') or '').lower()))
     impostos = [
         {'id': row.get('id'), 'nome': row.get('nome'), 'valor': float(row.get('valor') or 0.0)}
-        for row in (resp.data or [])
+        for row in rows
     ]
     return jsonify(impostos)
 
 # Criar imposto fixo
 @api_bp.route('/impostos_fixos', methods=['POST'])
 def create_imposto_fixo():
-    data = request.get_json() or {}
-    nome = data.get('nome')
-    valor = data.get('valor')
-    if not nome or valor is None:
-        return jsonify({'error': 'Campos nome e valor são obrigatórios'}), 400
-    client = get_client()
-    resp = client.table('impostos').insert({'nome': nome, 'valor': float(valor)}).execute()
-    new_id = resp.data[0].get('id') if resp.data else None
-    return jsonify({'id': new_id, 'nome': nome, 'valor': float(valor)}), 201
+    # Criação de novos impostos não é permitida; apenas atualização de valores
+    return jsonify({'error': 'Não é permitido criar novos impostos fixos. Atualize o valor dos existentes.'}), 405
 
 # Atualizar imposto fixo
 @api_bp.route('/impostos_fixos/<int:id>', methods=['PUT'])
 def update_imposto_fixo(id: int):
     data = request.get_json() or {}
-    nome = data.get('nome')
     valor = data.get('valor')
-    if nome is None and valor is None:
-        return jsonify({'error': 'Informe nome e/ou valor para atualizar'}), 400
+    if valor is None:
+        return jsonify({'error': 'Informe valor para atualizar'}), 400
     client = get_client()
     updates = {}
-    if nome is not None:
-        updates['nome'] = nome
-    if valor is not None:
-        updates['valor'] = float(valor)
-    if not updates:
-        return jsonify({'error': 'Nada para atualizar'}), 400
+    updates['valor'] = float(valor)
     client.table('impostos').update(updates).eq('id', id).execute()
-    return jsonify({'message': 'Imposto fixo atualizado'})
+    return jsonify({'message': 'Imposto fixo atualizado', 'id': id, 'valor': float(valor)})
 
 # Deletar imposto fixo
 @api_bp.route('/impostos_fixos/<int:id>', methods=['DELETE'])
 def delete_imposto_fixo(id: int):
-    client = get_client()
-    client.table('impostos').delete().eq('id', id).execute()
-    return jsonify({'message': 'Imposto fixo removido'})
+    return jsonify({'error': 'Exclusão de impostos fixos não é permitida'}), 405
 
 # CRUD Serviços (ex.: Silk)
 @api_bp.route('/servicos', methods=['GET'])
@@ -587,23 +656,6 @@ def delete_servico(id: int):
     client = get_client()
     client.table('servicos').delete().eq('id', id).execute()
     return jsonify({'message': 'Serviço removido'})
-
-# Consultar ICMS por estado
-@api_bp.route('/icms_estados', methods=['GET'])
-def get_icms_estados():
-    client = get_client()
-    resp = client.table('icms_estados').select('id, estado, aliquota, atualizado_em').order('estado').execute()
-    estados = [
-        {
-            'id': row.get('id'),
-            'estado': row.get('estado'),
-            'aliquota': float(row.get('aliquota') or 0.0),
-            'atualizado_em': str(row.get('atualizado_em')) if row.get('atualizado_em') is not None else None,
-        }
-        for row in (resp.data or [])
-    ]
-    return jsonify(estados)
-
 
 # CRUD sacolas_lote (Supabase)
 @api_bp.route('/sacolas_lote', methods=['GET'])
@@ -685,7 +737,12 @@ def add_gramatura():
     gram = data.get('gramatura')
     preco = data.get('preco')
     altura = data.get('altura_cm')
-    Gramatura.add(gram, preco, altura)
+    icms_estadual = data.get('icms_estadual')
+    try:
+        icms_estadual = float(icms_estadual) if icms_estadual not in (None, '') else None
+    except Exception:
+        icms_estadual = None
+    Gramatura.add(gram, preco, altura, icms_estadual)
     return jsonify({'message': 'Gramatura adicionada!'}), 201
 
 # Editar gramatura
@@ -699,6 +756,11 @@ def edit_gramatura(id):
     }
     if 'altura_cm' in data:
         updates['altura_cm'] = data.get('altura_cm')
+    if 'icms_estadual' in data:
+        try:
+            updates['icms_estadual'] = float(data.get('icms_estadual')) if data.get('icms_estadual') not in (None, '') else None
+        except Exception:
+            updates['icms_estadual'] = None
     client.table('gramaturas').update(updates).eq('id', id).execute()
     return jsonify({'message': 'Gramatura editada!'})
 
@@ -780,24 +842,15 @@ def calcular_preco():
     except Exception:
         servicos_detalhe = []
         valor_servicos_unit = 0.0
-    estado = data.get('estado')
-    cliente_tem_ie = data.get('cliente_tem_ie', False)
+    estado = (data.get('estado') or '').strip().upper() or None
+    cliente_tem_ie = bool(data.get('cliente_tem_ie', False))
 
-    # Buscar ICMS do estado
-    if cliente_tem_ie and estado != 'SP':
-        icms = 4.0
-    else:
-        client = get_client()
-        resp_icms = client.table('icms_estados').select('aliquota').eq('estado', estado).limit(1).execute()
-        row = resp_icms.data[0] if resp_icms.data else None
-        icms = float(row.get('aliquota')) if row and row.get('aliquota') is not None else 0.0
-
-    # Buscar gramatura
+    # Buscar gramatura (inclui alíquota estadual guardada na gramatura)
     client = get_client()
     if gramatura_id:
-        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('id', gramatura_id).limit(1).execute()
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm, icms_estadual').eq('id', gramatura_id).limit(1).execute()
     elif gramatura_nome:
-        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('gramatura', gramatura_nome).limit(1).execute()
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm, icms_estadual').eq('gramatura', gramatura_nome).limit(1).execute()
     else:
         return jsonify({'error': 'Informe gramatura_id ou gramatura_nome'}), 400
     row = resp_gram.data[0] if resp_gram.data else None
@@ -806,6 +859,19 @@ def calcular_preco():
     custo_un = float(row.get('preco') or 0)
     gramatura_nome = row.get('gramatura')
     altura_cm_db = float(row.get('altura_cm')) if row.get('altura_cm') is not None else None
+    icms_estadual_gram = None
+    try:
+        icms_estadual_gram = float(row.get('icms_estadual')) if row.get('icms_estadual') is not None else None
+    except Exception:
+        icms_estadual_gram = None
+
+    # Determinar ICMS: com IE usa alíquota estadual guardada na gramatura (difal/interestadual); sem IE usa tabela padrão por UF
+    if cliente_tem_ie:
+        icms = icms_estadual_gram if icms_estadual_gram is not None else 0.0
+        icms_origem = 'icms_estadual_gramatura' if icms_estadual_gram is not None else 'icms_zero_ie_sem_aliquota'
+    else:
+        icms = float(ICMS_ESTADO_PADRAO.get(estado, 0.0)) if estado else 0.0
+        icms_origem = 'icms_estado_padrao' if estado else 'icms_zero_sem_estado'
     # altura do produto solicitada (pode vir no payload) - em cm
     # Validação: altura_cm é obrigatória e deve ser um número positivo
     altura_produto = None
@@ -820,7 +886,9 @@ def calcular_preco():
 
     # Buscar impostos fixos
     resp_impostos = client.table('impostos').select('nome, valor').execute()
-    impostos_fixos = resp_impostos.data or []
+    impostos_fixos_raw = resp_impostos.data or []
+    # Filtra ICMS da lista de impostos fixos para evitar duplicidade (ICMS do produto já é calculado separado)
+    impostos_fixos = [imp for imp in impostos_fixos_raw if (imp.get('nome') or '').strip().upper() != 'ICMS']
     total_impostos_fixos = sum([float(imp.get('valor') or 0) for imp in impostos_fixos])
     impostos_detalhe = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
 
@@ -971,7 +1039,8 @@ def calcular_preco():
         'comissao_percentual': comissao,
         'outros_custos_percentual': outros_custos,
         'impostos_fixos_percentual': round(total_impostos_fixos, 2),
-        'icms_percentual': round(icms, 2),
+    'icms_percentual': round(icms, 2),
+    'icms_origem': icms_origem,
         'impostos_fixos_detalhe': impostos_detalhe,
         'quantidade': quantidade,
         'perdas_calibracao_un': perdas_calibracao_un,

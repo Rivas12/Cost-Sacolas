@@ -3,7 +3,7 @@ import './Settings.css'; // Reutiliza estilos globais (cards, tabelas, botões)
 
 export default function Gramaturas() {
   const [itens, setItens] = useState([]);
-  const [novo, setNovo] = useState({ gramatura: '', preco: '', altura_cm: '' });
+  const [novo, setNovo] = useState({ gramatura: '', preco: '', altura_cm: '', icms_estadual: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -35,7 +35,12 @@ export default function Gramaturas() {
       const res = await fetch(API.LISTAR);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Erro ao buscar gramaturas');
-      setItens(Array.isArray(data) ? data : []);
+      const lista = Array.isArray(data) ? data : [];
+      setItens(lista.map((g) => ({
+        ...g,
+        icms_estadual: g.icms_estadual ?? '',
+        altura_cm: g.altura_cm ?? '',
+      })));
     } catch (e) {
       setError(e.message || 'Erro ao buscar gramaturas');
     } finally {
@@ -68,7 +73,12 @@ export default function Gramaturas() {
       const updates = itens
         .filter((g) => !!g.id)
         .map(async (g) => {
-          const payload = { gramatura: g.gramatura, preco: toNumber(g.preco), altura_cm: maybeNumberOrNull(g.altura_cm) };
+          const payload = {
+            gramatura: g.gramatura,
+            preco: toNumber(g.preco),
+            altura_cm: maybeNumberOrNull(g.altura_cm),
+            icms_estadual: maybeNumberOrNull(g.icms_estadual),
+          };
           const res = await fetch(API.ATUALIZAR(g.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -84,7 +94,12 @@ export default function Gramaturas() {
       // Cria novos (sem id)
       const novos = itens.filter((g) => !g.id && g.gramatura && g.preco !== '');
       for (const g of novos) {
-        const payload = { gramatura: g.gramatura, preco: toNumber(g.preco), altura_cm: maybeNumberOrNull(g.altura_cm) };
+        const payload = {
+          gramatura: g.gramatura,
+          preco: toNumber(g.preco),
+          altura_cm: maybeNumberOrNull(g.altura_cm),
+          icms_estadual: maybeNumberOrNull(g.icms_estadual),
+        };
         const res = await fetch(API.CRIAR, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -96,13 +111,18 @@ export default function Gramaturas() {
 
       // Também cria o que estiver na linha de novo
       if (novo.gramatura && novo.preco !== '') {
-        const payload = { gramatura: novo.gramatura, preco: toNumber(novo.preco), altura_cm: maybeNumberOrNull(novo.altura_cm) };
+        const payload = {
+          gramatura: novo.gramatura,
+          preco: toNumber(novo.preco),
+          altura_cm: maybeNumberOrNull(novo.altura_cm),
+          icms_estadual: maybeNumberOrNull(novo.icms_estadual),
+        };
         const res = await fetch(API.CRIAR, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || `Falha ao adicionar ${novo.gramatura}`);
-        setNovo({ gramatura: '', preco: '', altura_cm: '' });
+        setNovo({ gramatura: '', preco: '', altura_cm: '', icms_estadual: '' });
       }
 
       await carregar();
@@ -130,6 +150,7 @@ export default function Gramaturas() {
                 <th style={{textAlign:'left'}}>Gramatura</th>
                 <th style={{textAlign:'left'}}>Preço</th>
                 <th style={{textAlign:'left'}}>Altura (cm)</th>
+                <th style={{textAlign:'left'}}>ICMS estadual (%)</th>
                 <th style={{width:90, textAlign:'left'}}>Ações</th>
               </tr>
             </thead>
@@ -165,6 +186,15 @@ export default function Gramaturas() {
                     />
                   </td>
                   <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex.: 4"
+                      value={g.icms_estadual ?? ''}
+                      onChange={(e) => setItens((list) => list.map((i) => (i.id === g.id ? { ...i, icms_estadual: e.target.value } : (i === g ? { ...i, icms_estadual: e.target.value } : i))))}
+                    />
+                  </td>
+                  <td>
                     <div className="table-actions">
                       <button
                         className="btn-icon danger"
@@ -193,7 +223,10 @@ export default function Gramaturas() {
                   <input type="number" step="0.1" placeholder="Altura (cm)" value={novo.altura_cm} onChange={(e)=>setNovo((n)=>({...n, altura_cm:e.target.value}))} />
                 </td>
                 <td>
-                  <button className="btn-ghost small" type="button" onClick={()=>{ if(!novo.gramatura) return; setItens((list)=>[...list, { gramatura: novo.gramatura, preco: novo.preco, altura_cm: novo.altura_cm }]); setNovo({ gramatura:'', preco:'', altura_cm:'' }); }}>Adicionar</button>
+                  <input type="number" step="0.01" placeholder="ICMS (%)" value={novo.icms_estadual} onChange={(e)=>setNovo((n)=>({...n, icms_estadual:e.target.value}))} />
+                </td>
+                <td>
+                  <button className="btn-ghost small" type="button" onClick={()=>{ if(!novo.gramatura) return; setItens((list)=>[...list, { gramatura: novo.gramatura, preco: novo.preco, altura_cm: novo.altura_cm, icms_estadual: novo.icms_estadual }]); setNovo({ gramatura:'', preco:'', altura_cm:'', icms_estadual:'' }); }}>Adicionar</button>
                 </td>
               </tr>
             </tbody>

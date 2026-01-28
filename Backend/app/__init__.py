@@ -2,7 +2,6 @@ from flask import Flask
 from flask_cors import CORS
 from app.models.gramatura import init_db
 from app.models.imposto_fixo import init_imposto_fixo
-from app.models.icms_estado import init_icms_estado
 from app.config.config import Config
 import os
 
@@ -21,7 +20,6 @@ def create_app():
     # Inicializa o banco de dados e tabelas
     init_db()
     init_imposto_fixo()
-    init_icms_estado()
     # Não semeamos automaticamente Supabase para evitar gravações inesperadas.
     # Se precisar popular, faça manualmente via script/CLI.
 

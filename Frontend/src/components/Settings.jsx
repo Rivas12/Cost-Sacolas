@@ -8,16 +8,14 @@ export default function Settings() {
   const [servicos, setServicos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [novoImposto, setNovoImposto] = useState({ nome: '', valor: '' });
   const [novoServico, setNovoServico] = useState({ nome: '', valor: '', imposto_percentual: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
 
   const API = {
     LISTAR: '/api/impostos_fixos',
-    CRIAR: '/api/impostos_fixos',
-    ATUALIZAR: (id) => `/api/impostos_fixos/${id}`,
-    DELETAR: (id) => `/api/impostos_fixos/${id}`,
+  CRIAR: '/api/impostos_fixos',
+  ATUALIZAR: (id) => `/api/impostos_fixos/${id}`,
     SERVICOS_LISTAR: '/api/servicos',
     SERVICOS_CRIAR: '/api/servicos',
     SERVICOS_ATUALIZAR: (id) => `/api/servicos/${id}`,
@@ -80,16 +78,15 @@ export default function Settings() {
 
   const salvarImposto = async (imp) => {
     setError('');
-    const payload = { nome: imp.nome, valor: toNumber(imp.valor) };
-    const isNovo = !imp.id;
-    const url = isNovo ? API.CRIAR : API.ATUALIZAR(imp.id);
-    const method = isNovo ? 'POST' : 'PUT';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const payload = { valor: toNumber(imp.valor) };
+    const res = await fetch(API.ATUALIZAR(imp.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Falha ao salvar');
-    // Atualiza lista local
-    if (isNovo) setImpostos((list) => [...list, data]);
-    else setImpostos((list) => list.map((i) => (i.id === imp.id ? { ...i, ...payload } : i)));
+    setImpostos((list) => list.map((i) => (i.id === imp.id ? { ...i, valor: payload.valor } : i)));
   };
 
   const salvarServico = async (svc) => {
@@ -115,14 +112,6 @@ export default function Settings() {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Falha ao excluir serviço');
     setServicos((list) => list.filter((i) => i.id !== id));
-  };
-
-  const removerImposto = async (id) => {
-    setError('');
-    const res = await fetch(API.DELETAR(id), { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Falha ao excluir');
-    setImpostos((list) => list.filter((i) => i.id !== id));
   };
 
   const salvarTudo = async () => {
@@ -155,7 +144,7 @@ export default function Settings() {
       const updates = impostos
         .filter((imp) => !!imp.id)
         .map(async (imp) => {
-          const payload = { nome: imp.nome, valor: toNumber(imp.valor) };
+          const payload = { valor: toNumber(imp.valor) };
           const res = await fetch(API.ATUALIZAR(imp.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -167,19 +156,6 @@ export default function Settings() {
         });
 
       await Promise.all(updates);
-
-      // Cria todos os novos (sem id)
-      const novos = impostos.filter((imp) => !imp.id && imp.nome && imp.valor !== '');
-      for (const imp of novos) {
-        const payloadNovo = { nome: imp.nome, valor: toNumber(imp.valor) };
-        const resNovo = await fetch(API.CRIAR, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payloadNovo),
-        });
-        const dataNovo = await resNovo.json();
-        if (!resNovo.ok) throw new Error(dataNovo?.error || `Falha ao adicionar ${imp.nome}`);
-      }
 
       // Atualiza/insere serviços
       const svcUpdates = servicos
@@ -232,19 +208,6 @@ export default function Settings() {
         const dataNovo = await resNovo.json();
         if (!resNovo.ok) throw new Error(dataNovo?.error || `Falha ao adicionar ${novoServico.nome}`);
         setNovoServico({ nome: 'Silk', valor: '', imposto_percentual: '' });
-      }
-
-      // Se existir algo digitado na linha "novo imposto", adiciona como novo também
-      if (novoImposto.nome && novoImposto.valor !== '') {
-        const payloadNovo = { nome: novoImposto.nome, valor: toNumber(novoImposto.valor) };
-        const resNovo = await fetch(API.CRIAR, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payloadNovo),
-        });
-        const dataNovo = await resNovo.json();
-        if (!resNovo.ok) throw new Error(dataNovo?.error || `Falha ao adicionar ${novoImposto.nome}`);
-        setNovoImposto({ nome: '', valor: '' });
       }
 
       // Recarrega a lista para refletir ids e valores corretos
@@ -355,8 +318,8 @@ export default function Settings() {
             <thead>
               <tr>
                 <th style={{textAlign:'left'}}>Serviço</th>
-                <th style={{textAlign:'left'}}>Valor (R$)</th>
-                <th style={{textAlign:'left'}}>Imposto (%)</th>
+                <th className="num">Valor (R$)</th>
+                <th className="num">Imposto (%)</th>
                 <th style={{width:90, textAlign:'left'}}>Ações</th>
               </tr>
             </thead>
@@ -460,7 +423,7 @@ export default function Settings() {
 
       <div className="settings-card">
         <h3 style={{marginTop:0}}>Impostos fixos</h3>
-        <p className="settings-sub" style={{marginTop:4}}>Gerencie a lista de impostos fixos usados no cálculo.</p>
+  <p className="settings-sub" style={{marginTop:4}}>Altere apenas os percentuais dos impostos fixos (não é possível excluir ou criar novos).</p>
 
         {error && <div className="calc-error" style={{color:'#b30000', marginBottom:10}}>{error}</div>}
         {loading ? (
@@ -470,8 +433,7 @@ export default function Settings() {
             <thead>
               <tr>
                 <th style={{textAlign:'left'}}>Nome</th>
-                <th style={{textAlign:'left'}}>Percentual</th>
-                <th style={{width:90, textAlign:'left'}}>Ações</th>
+                <th className="num">Percentual</th>
               </tr>
             </thead>
             <tbody>
@@ -479,9 +441,10 @@ export default function Settings() {
                 <tr key={imp.id}>
                   <td>
                     <input
-                      placeholder="Ex.: IRPJ"
                       value={imp.nome}
-                      onChange={(e) => setImpostos((list) => list.map((i) => i.id === imp.id ? { ...i, nome: e.target.value } : i))}
+                      readOnly
+                      disabled
+                      style={{backgroundColor:'#f3f4f6'}}
                     />
                   </td>
                   <td>
@@ -496,35 +459,8 @@ export default function Settings() {
                       <span className="suffix">%</span>
                     </div>
                   </td>
-                  <td>
-                    <div className="table-actions">
-                      <button
-                        className="btn-icon danger"
-                        onClick={() => removerImposto(imp.id)}
-                        type="button"
-                        aria-label={`Excluir ${imp.nome}`}
-                        title="Excluir"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
-              <tr>
-                <td>
-                  <input placeholder="Novo imposto" value={novoImposto.nome} onChange={(e)=>setNovoImposto((n)=>({...n, nome:e.target.value}))} />
-                </td>
-                <td>
-                  <div className="input-suffix">
-                    <input type="number" step="0.01" placeholder="0,00" value={novoImposto.valor} onChange={(e)=>setNovoImposto((n)=>({...n, valor:e.target.value}))} />
-                    <span className="suffix">%</span>
-                  </div>
-                </td>
-                <td>
-                  <button className="btn-ghost small" type="button" onClick={()=>{ if(!novoImposto.nome) return; setImpostos((list)=>[...list, { nome: novoImposto.nome, valor: novoImposto.valor }]); setNovoImposto({nome:'', valor:''}); }}>Adicionar</button>
-                </td>
-              </tr>
             </tbody>
           </table>
         )}

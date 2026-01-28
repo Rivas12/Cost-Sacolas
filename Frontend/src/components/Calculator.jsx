@@ -5,10 +5,13 @@ import { useSettings } from '../context/SettingsContext';
 // Endpoints (paths) e helpers de request com fallback
 const API_PATHS = {
   GRAMATURAS: '/gramaturas',
-  ICMS: '/icms_estados',
   CALCULAR: '/calcular_preco',
   SERVICOS: '/servicos',
 };
+
+const ESTADOS_BR = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+];
 
 const API_BASES = [
   '/api',
@@ -36,7 +39,7 @@ export default function Calculator({ onOpenBatch }) {
   const { settings } = useSettings();
   // Opções carregadas da API
   const [gramaturas, setGramaturas] = useState([]);
-  const [estados, setEstados] = useState([]);
+  const [estados, setEstados] = useState(ESTADOS_BR);
   const [servicos, setServicos] = useState([]);
   const [valorSilkServico, setValorSilkServico] = useState(null);
   const [servicosSelecionados, setServicosSelecionados] = useState([]);
@@ -68,6 +71,8 @@ export default function Calculator({ onOpenBatch }) {
   const [calcSnapshot, setCalcSnapshot] = useState(null);
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchMsg, setBatchMsg] = useState('');
   const [authed, setAuthed] = useState(false);
   const [showEtapas, setShowEtapas] = useState(false);
   const [showAproveitamento, setShowAproveitamento] = useState(false);
@@ -126,20 +131,13 @@ export default function Calculator({ onOpenBatch }) {
     const fetchAll = async () => {
       try {
         setError('');
-        const [gData, eData, sData] = await Promise.all([
+        const [gData, sData] = await Promise.all([
           fetchJson(API_PATHS.GRAMATURAS),
-          fetchJson(API_PATHS.ICMS),
           fetchJson(API_PATHS.SERVICOS).catch(() => []),
         ]);
         if (!cancelled) {
           setGramaturas(gData || []);
-          const estadosOrdenados = (eData || [])
-            .map((e) => e.estado)
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b));
-          // Garante SP presente
-          if (!estadosOrdenados.includes('SP')) estadosOrdenados.unshift('SP');
-          setEstados(estadosOrdenados);
+          setEstados(ESTADOS_BR);
           const listaServicos = Array.isArray(sData) ? sData : [];
           setServicos(listaServicos);
           const silk = listaServicos.find((s) => String(s.nome || '').toLowerCase().includes('silk'));
@@ -247,19 +245,24 @@ export default function Calculator({ onOpenBatch }) {
   }, [form.gramatura_id, form.quantidade]);
 
   const handleBatchPdf = async () => {
+    setBatchLoading(true);
+    setBatchMsg('Gerando PDF...');
     try {
       const itensSupabase = await fetchJson('/sacolas_lote');
       const itens = Array.isArray(itensSupabase) ? itensSupabase : [];
       if (!itens.length) {
         window.alert('Nenhum tamanho salvo em lote. Vá em Cálculo em Lote e adicione itens (dados vêm do Supabase).');
+        setBatchMsg('');
         return;
       }
       if (!form.gramatura_id) {
         window.alert('Selecione a gramatura antes de calcular em lote.');
+        setBatchMsg('');
         return;
       }
       if (!form.estado) {
         window.alert('Selecione o estado antes de calcular em lote.');
+        setBatchMsg('');
         return;
       }
 
@@ -315,8 +318,12 @@ export default function Calculator({ onOpenBatch }) {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      setBatchMsg('PDF gerado! Verifique o download.');
     } catch (err) {
+      setBatchMsg('');
       window.alert(err?.message || 'Erro ao gerar PDF em lote.');
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -494,9 +501,9 @@ export default function Calculator({ onOpenBatch }) {
             type="button"
             className="btn-success"
             onClick={handleBatchPdf}
-            disabled={!canBatch || loading}
+            disabled={!canBatch || loading || batchLoading}
           >
-            Calcular em lote
+            {batchLoading ? 'Gerando PDF...' : 'Calcular em lote'}
           </button>
           {resultado && (
             <button type="button" className="btn-ghost" onClick={enviarAprovacao} disabled={sending}>
@@ -504,6 +511,8 @@ export default function Calculator({ onOpenBatch }) {
             </button>
           )}
         </div>
+
+        {batchMsg && <div className="calc-sub" style={{marginTop:8}}>{batchMsg}</div>}
 
         {sendMsg && <div className="calc-sub" style={{marginTop:8}}>{sendMsg}</div>}
 
@@ -623,14 +632,14 @@ export default function Calculator({ onOpenBatch }) {
                 <thead>
                   <tr>
                     <th>Etapas</th>
-                    <th>Percentual</th>
-                    <th>Valor</th>
+                    <th className="num">Percentual</th>
+                    <th className="num">Valor</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td>Perdas (calibração)</td>
-                    <td>
+                    <td className="num">
                       {(() => {
                         const perdasUn = Math.max(0, Number(resultado.quantidade_total || 0) - Number(resultado.quantidade || 0));
                         const perdasVal = perdasUn * Number(resultado.custo_real || 0);
@@ -639,7 +648,7 @@ export default function Calculator({ onOpenBatch }) {
                         return `${pct.toFixed(2)}%`;
                       })()}
                     </td>
-                    <td>
+                    <td className="num">
                       R$ {(
                         (Number(resultado.quantidade_total || 0) - Number(resultado.quantidade || 0))
                         * Number(resultado.custo_real || 0)
@@ -648,46 +657,49 @@ export default function Calculator({ onOpenBatch }) {
                   </tr>
                   <tr>
                     <td>Custo do material</td>
-                    <td>{(() => {
+                    <td className="num">{(() => {
                       const materialVal = Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0);
                       const denom = Number(resultado.preco_final_produto || resultado.preco_final || 0);
                       const pct = denom > 0 ? (materialVal / denom) * 100 : 0;
                       return `${pct.toFixed(2)}%`;
                     })()}</td>
-                    <td>R$ {(Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0)).toFixed(2)}</td>
+                    <td className="num">R$ {(Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0)).toFixed(2)}</td>
                   </tr>
                   <tr>
                     <td>Margem</td>
-                    <td>{resultado.margem_percentual}%</td>
-                    <td>R$ {resultado.valor_margem.toFixed(2)}</td>
+                    <td className="num">{resultado.margem_percentual}%</td>
+                    <td className="num">R$ {resultado.valor_margem.toFixed(2)}</td>
                   </tr>
                   <tr>
                     <td>Comissão</td>
-                    <td>{resultado.comissao_percentual}%</td>
-                    <td>R$ {resultado.valor_comissao.toFixed(2)}</td>
+                    <td className="num">{resultado.comissao_percentual}%</td>
+                    <td className="num">R$ {resultado.valor_comissao.toFixed(2)}</td>
                   </tr>
-                  {Array.isArray(resultado.impostos_fixos_detalhe) && resultado.impostos_fixos_detalhe.length > 0 && (
-                    resultado.impostos_fixos_detalhe.map((imp, idx) => {
+                  {Array.isArray(resultado.impostos_fixos_detalhe) && resultado.impostos_fixos_detalhe
+                    .filter((imp) => Number(imp.percentual || 0) > 0 && Math.abs(Number(imp.percentual || 0)) >= 0.0001)
+                    .map((imp, idx) => {
                       const pct = Number(imp.percentual || 0);
                       const val = Number(resultado.preco_final_produto || resultado.preco_final || 0) * (pct / 100);
+                      if (Math.abs(val) < 0.0001) return null;
                       return (
                         <tr key={`imp-${idx}`}>
                           <td> {imp.nome}</td>
-                          <td>{pct.toFixed(2)}%</td>
-                          <td>R$ {val.toFixed(2)}</td>
+                          <td className="num">{pct.toFixed(2)}%</td>
+                          <td className="num">R$ {val.toFixed(2)}</td>
                         </tr>
                       );
-                    })
+                    })}
+                  {(Number(resultado.icms_percentual || 0) !== 0 && Math.abs(Number(resultado.valor_icms || 0)) >= 0.0001) && (
+                    <tr>
+                      <td>ICMS</td>
+                      <td className="num">{resultado.icms_percentual}%</td>
+                      <td className="num">R$ {resultado.valor_icms.toFixed(2)}</td>
+                    </tr>
                   )}
                   <tr>
-                    <td>ICMS</td>
-                    <td>{resultado.icms_percentual}%</td>
-                    <td>R$ {resultado.valor_icms.toFixed(2)}</td>
-                  </tr>
-                  <tr>
                     <td>Outros custos</td>
-                    <td>{resultado.outros_custos_percentual}%</td>
-                    <td>R$ {resultado.valor_outros.toFixed(2)}</td>
+                    <td className="num">{resultado.outros_custos_percentual}%</td>
+                    <td className="num">R$ {resultado.valor_outros.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
