@@ -5,6 +5,7 @@ import CalculoEmLote from './components/CalculoEmLote';
 import Gramaturas from './components/Gramaturas';
 import Settings from './components/Settings';
 import InserirLogo from './components/InserirLogo';
+import StatusBadge from './components/StatusBadge';
 import './App.css';
 import { SettingsProvider, SettingsBootstrapper } from './context/SettingsContext';
 
@@ -87,6 +88,9 @@ function App() {
         <Sidebar onSelect={handleSelect} selected={selected} />
         <main className="main-content">
           <div className="page-container">
+            <div className="page-top">
+              <StatusBadge />
+            </div>
             {renderContent()}
           </div>
         </main>
@@ -100,6 +104,12 @@ function App() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Senha"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleConfirmPassword();
+                  }
+                }}
                 autoFocus
               />
               {error && <span className="modal-error">{error}</span>}

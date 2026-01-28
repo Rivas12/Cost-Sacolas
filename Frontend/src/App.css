@@ -27,6 +27,12 @@ body { display: block; overflow-x: hidden; }
   padding: 32px;
 }
 
+.page-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

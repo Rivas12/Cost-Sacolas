@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
-from app.supabase_client import get_client
+from app.supabase_client import get_client, SupabaseConfigError
 from app.models.gramatura import Gramatura
 from app.models.configuracoes import get_configuracoes, update_configuracoes
 import os
@@ -11,6 +11,7 @@ import ssl
 import html
 import math
 import io
+import time
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -35,6 +36,41 @@ def _tls_context():
         return None
 
 api_bp = Blueprint('api', __name__)
+
+
+@api_bp.route('/status', methods=['GET'])
+def status():
+    """Health-check da API e conexão com Supabase."""
+    started = time.perf_counter()
+
+    payload = {
+        'api': {'ok': True},
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }
+
+    try:
+        client = get_client()
+    except SupabaseConfigError as e:
+        payload['supabase'] = {'ok': False, 'error': str(e)}
+    except Exception as e:
+        payload['supabase'] = {'ok': False, 'error': f'Erro inesperado ao criar cliente: {e}'}
+    else:
+        ping_started = time.perf_counter()
+        try:
+            resp = client.table('gramaturas').select('id').limit(1).execute()
+            rows = resp.data or []
+            payload['supabase'] = {
+                'ok': True,
+                'latency_ms': round((time.perf_counter() - ping_started) * 1000, 1),
+                'rows_sampled': len(rows),
+            }
+        except Exception as e:
+            payload['supabase'] = {'ok': False, 'error': str(e)}
+
+    payload['latency_ms'] = round((time.perf_counter() - started) * 1000, 1)
+    payload['status'] = 'ok' if payload.get('supabase', {}).get('ok') else 'degraded'
+    status_code = 200 if payload['status'] == 'ok' else 503
+    return jsonify(payload), status_code
 
 
 @api_bp.route('/canvas/bases', methods=['GET'])
