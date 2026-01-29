@@ -1,10 +1,11 @@
-version: '3.8'
+version: "3.9"
+
 services:
   backend:
     build: .
-    restart: always
-    env_file:
-      - .env
+    container_name: cost-sacolas-backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
-    command: ["gunicorn", "-b", "0.0.0.0:8000", "app.main:app"]
+    env_file:
+      - .env
