@@ -4,3 +4,4 @@ python-dotenv>=1.0,<2
 supabase>=2.5,<3
 reportlab==4.2.5
 certifi>=2024.0.0
+gunicorn

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import { apiJson } from '../utils/apiClient';
 
 const SettingsContext = createContext(null);
 
@@ -32,9 +33,7 @@ export function SettingsBootstrapper() {
     let active = true;
     (async () => {
       try {
-        const res = await fetch('/api/configuracoes');
-        const data = await res.json();
-        if (!res.ok) return;
+        const data = await apiJson('/configuracoes');
         if (!active) return;
         const { valor_silk: _ignoredSilk, ...rest } = data || {};
         const merged = { ...settings, ...rest };

@@ -1,11 +1,20 @@
-version: "3.9"
-
 services:
   backend:
     build: .
     container_name: cost-sacolas-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     env_file:
       - .env
+
+  nginx:
+    image: nginx:alpine
+    container_name: cost-sacolas-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend

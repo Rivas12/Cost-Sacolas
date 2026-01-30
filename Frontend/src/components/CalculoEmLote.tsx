@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './CalculoEmLote.css';
 import './Settings.css';
+import { apiFetch, apiJson } from '../utils/apiClient';
 
 type BatchEntry = {
   id: number;
@@ -47,9 +48,7 @@ export default function CalculoEmLote(): React.ReactElement {
     setError('');
     setStatus('');
     try {
-      const res = await fetch('/api/sacolas_lote');
-      if (!res.ok) throw new Error('Erro ao buscar lista');
-      const data = await res.json();
+      const data = await apiJson('/sacolas_lote');
       setEntries((data || []).map(mapFromApi));
       setStatus('Dados carregados do Supabase.');
     } catch (e: any) {
@@ -93,7 +92,7 @@ export default function CalculoEmLote(): React.ReactElement {
         fundo_cm: Number.isNaN(fundoVal as number) ? null : fundoVal,
         tem_alca: Boolean(novo.incluir_alca),
       };
-      const res = await fetch('/api/sacolas_lote', {
+      const res = await apiFetch('/sacolas_lote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -140,7 +139,7 @@ export default function CalculoEmLote(): React.ReactElement {
         fundo_cm: Number.isNaN(fundoVal as number) ? null : fundoVal,
         tem_alca: Boolean(entry.incluir_alca),
       };
-      const res = await fetch(`/api/sacolas_lote/${id}`, {
+      const res = await apiFetch(`/sacolas_lote/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -165,7 +164,7 @@ export default function CalculoEmLote(): React.ReactElement {
     setError('');
     setStatus('');
     try {
-      const res = await fetch(`/api/sacolas_lote/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/sacolas_lote/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || 'Erro ao remover');

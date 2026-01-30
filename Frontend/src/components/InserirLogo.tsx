@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './InserirLogo.css';
+import { apiJson } from '../utils/apiClient';
 
 type LogoLayer = {
   id: string;
@@ -89,9 +90,7 @@ export default function InserirLogo() {
     const fetchFolders = async () => {
       setLoadingFolders(true);
       try {
-        const res = await fetch('/api/canvas/pastas');
-        if (!res.ok) throw new Error('Erro ao buscar pastas');
-        const data = await res.json();
+        const data = await apiJson('/canvas/pastas');
         const folders: string[] = Array.isArray(data?.folders)
           ? data.folders.map((f: any) => (typeof f === 'string' ? f : f?.name)).filter(Boolean)
           : Array.isArray(data)
@@ -129,9 +128,7 @@ export default function InserirLogo() {
     const fetchBasesFromFolder = async () => {
       setLoadingBase(true);
       try {
-        const res = await fetch(`/api/canvas/bases?folder=${encodeURIComponent(selectedFolder)}`);
-        if (!res.ok) throw new Error('Erro ao buscar bases da pasta');
-        const data = await res.json();
+        const data = await apiJson(`/canvas/bases?folder=${encodeURIComponent(selectedFolder)}`);
         const files = Array.isArray(data?.files) ? data.files : Array.isArray(data) ? data : [];
 
         if (files.length) {

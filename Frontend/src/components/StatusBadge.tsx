@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './StatusBadge.css';
+import { apiFetch } from '../utils/apiClient';
 
 type StatusPayload = {
   status?: 'ok' | 'degraded';
@@ -25,7 +26,7 @@ export default function StatusBadge() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/status');
+      const res = await apiFetch('/status');
       const json: StatusPayload = await res.json();
       setData(json);
       if (!res.ok || json.status !== 'ok') {

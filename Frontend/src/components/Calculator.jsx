@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './Calculator.css';
 import { useSettings } from '../context/SettingsContext';
+import { apiJson } from '../utils/apiClient';
 
-// Endpoints (paths) e helpers de request com fallback
+// Endpoints (paths)
 const API_PATHS = {
   GRAMATURAS: '/gramaturas',
   CALCULAR: '/calcular_preco',
@@ -12,28 +13,6 @@ const API_PATHS = {
 const ESTADOS_BR = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
 ];
-
-const API_BASES = [
-  '/api',
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) || 'http://localhost:5000/api',
-];
-
-async function fetchJson(path, options) {
-  let lastError;
-  for (const base of API_BASES) {
-    const url = `${base}${path}`;
-    try {
-      const res = await fetch(url, options);
-      // Retorna direto se OK
-      if (res.ok) return res.json();
-      // Guarda erro e tenta próximo base
-      lastError = new Error(`${res.status} ${res.statusText} em ${url}`);
-    } catch (e) {
-      lastError = e;
-    }
-  }
-  throw lastError || new Error('Falha na requisição');
-}
 
 export default function Calculator({ onOpenBatch }) {
   const { settings } = useSettings();
@@ -132,8 +111,8 @@ export default function Calculator({ onOpenBatch }) {
       try {
         setError('');
         const [gData, sData] = await Promise.all([
-          fetchJson(API_PATHS.GRAMATURAS),
-          fetchJson(API_PATHS.SERVICOS).catch(() => []),
+          apiJson(API_PATHS.GRAMATURAS),
+          apiJson(API_PATHS.SERVICOS).catch(() => []),
         ]);
         if (!cancelled) {
           setGramaturas(gData || []);
@@ -224,7 +203,7 @@ export default function Calculator({ onOpenBatch }) {
         payload.tamanho_alca = parseFloat(settings.tamanho_alca || 0);
       }
 
-      const data = await fetchJson(API_PATHS.CALCULAR, {
+      const data = await apiJson(API_PATHS.CALCULAR, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -248,7 +227,7 @@ export default function Calculator({ onOpenBatch }) {
     setBatchLoading(true);
     setBatchMsg('Gerando PDF...');
     try {
-      const itensSupabase = await fetchJson('/sacolas_lote');
+      const itensSupabase = await apiJson('/sacolas_lote');
       const itens = Array.isArray(itensSupabase) ? itensSupabase : [];
       if (!itens.length) {
         window.alert('Nenhum tamanho salvo em lote. Vá em Cálculo em Lote e adicione itens (dados vêm do Supabase).');
@@ -300,7 +279,7 @@ export default function Calculator({ onOpenBatch }) {
         incluir_alca: Boolean(it.tem_alca ?? it.incluir_alca ?? it.alca ?? it.temAlca),
       }));
 
-      const res = await fetch('/api/batch/pdf-precos', {
+      const res = await apiFetch('/batch/pdf-precos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itens: itensPayload, contexto }),
@@ -349,7 +328,7 @@ export default function Calculator({ onOpenBatch }) {
             desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         },
       };
-      const data = await fetchJson(API_PATHS.CALCULAR.replace('/calcular_preco', '/aprovacao/enviar'), {
+      const data = await apiJson(API_PATHS.CALCULAR.replace('/calcular_preco', '/aprovacao/enviar'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

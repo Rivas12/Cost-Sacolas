@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './Settings.css';
 import { useSettings } from '../context/SettingsContext';
+import { apiFetch, apiJson } from '../utils/apiClient';
 
 export default function Settings() {
   const { settings, setSettings } = useSettings();
@@ -13,15 +14,15 @@ export default function Settings() {
   const [saved, setSaved] = useState('');
 
   const API = {
-    LISTAR: '/api/impostos_fixos',
-  CRIAR: '/api/impostos_fixos',
-  ATUALIZAR: (id) => `/api/impostos_fixos/${id}`,
-    SERVICOS_LISTAR: '/api/servicos',
-    SERVICOS_CRIAR: '/api/servicos',
-    SERVICOS_ATUALIZAR: (id) => `/api/servicos/${id}`,
-    SERVICOS_DELETAR: (id) => `/api/servicos/${id}`,
-    CONFIG_GET: '/api/configuracoes',
-    CONFIG_PUT: '/api/configuracoes',
+    LISTAR: '/impostos_fixos',
+  CRIAR: '/impostos_fixos',
+  ATUALIZAR: (id) => `/impostos_fixos/${id}`,
+    SERVICOS_LISTAR: '/servicos',
+    SERVICOS_CRIAR: '/servicos',
+    SERVICOS_ATUALIZAR: (id) => `/servicos/${id}`,
+    SERVICOS_DELETAR: (id) => `/servicos/${id}`,
+    CONFIG_GET: '/configuracoes',
+    CONFIG_PUT: '/configuracoes',
   };
 
   const toNumber = (val) => {
@@ -36,20 +37,11 @@ export default function Settings() {
       setLoading(true); setError('');
       try {
         // Busca impostos e configurações em paralelo
-        const [resImp, resCfg, resServ] = await Promise.all([
-          fetch(API.LISTAR),
-          fetch(API.CONFIG_GET),
-          fetch(API.SERVICOS_LISTAR).catch((e)=>e),
+        const [dataImp, dataCfg, dataServ] = await Promise.all([
+          apiJson(API.LISTAR),
+          apiJson(API.CONFIG_GET),
+          apiJson(API.SERVICOS_LISTAR).catch((e) => []),
         ]);
-
-        const dataImp = await resImp.json();
-        const dataCfg = await resCfg.json();
-  let dataServ = [];
-  try { dataServ = await resServ.json(); } catch (e) { dataServ = []; }
-
-        if (!resImp.ok) throw new Error(dataImp?.error || 'Erro ao buscar impostos');
-        if (!resCfg.ok) throw new Error(dataCfg?.error || 'Erro ao buscar configurações');
-        if (!resServ.ok) throw new Error((dataServ && dataServ.error) || 'Erro ao buscar serviços');
 
         setImpostos(Array.isArray(dataImp) ? dataImp : []);
         const listaServicos = Array.isArray(dataServ) ? dataServ : [];
@@ -79,7 +71,7 @@ export default function Settings() {
   const salvarImposto = async (imp) => {
     setError('');
     const payload = { valor: toNumber(imp.valor) };
-    const res = await fetch(API.ATUALIZAR(imp.id), {
+    const res = await apiFetch(API.ATUALIZAR(imp.id), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -99,7 +91,7 @@ export default function Settings() {
     const isNovo = !svc.id;
     const url = isNovo ? API.SERVICOS_CRIAR : API.SERVICOS_ATUALIZAR(svc.id);
     const method = isNovo ? 'POST' : 'PUT';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Falha ao salvar serviço');
     if (isNovo) setServicos((list) => [...list, data]);
@@ -108,7 +100,7 @@ export default function Settings() {
 
   const removerServico = async (id) => {
     setError('');
-    const res = await fetch(API.SERVICOS_DELETAR(id), { method: 'DELETE' });
+    const res = await apiFetch(API.SERVICOS_DELETAR(id), { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Falha ao excluir serviço');
     setServicos((list) => list.filter((i) => i.id !== id));
@@ -128,7 +120,7 @@ export default function Settings() {
         tema: settings.tema,
         notificacoes: !!settings.notificacoes,
       };
-      const resCfg = await fetch(API.CONFIG_PUT, {
+      const resCfg = await apiFetch(API.CONFIG_PUT, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cfgPayload),
@@ -145,7 +137,7 @@ export default function Settings() {
         .filter((imp) => !!imp.id)
         .map(async (imp) => {
           const payload = { valor: toNumber(imp.valor) };
-          const res = await fetch(API.ATUALIZAR(imp.id), {
+          const res = await apiFetch(API.ATUALIZAR(imp.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -166,7 +158,7 @@ export default function Settings() {
             valor: toNumber(svc.valor),
             imposto_percentual: toNumber(svc.imposto_percentual ?? svc.imposto ?? svc.impostos),
           };
-          const res = await fetch(API.SERVICOS_ATUALIZAR(svc.id), {
+          const res = await apiFetch(API.SERVICOS_ATUALIZAR(svc.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -185,7 +177,7 @@ export default function Settings() {
           valor: toNumber(svc.valor),
           imposto_percentual: toNumber(svc.imposto_percentual ?? svc.imposto ?? svc.impostos),
         };
-        const resNovo = await fetch(API.SERVICOS_CRIAR, {
+        const resNovo = await apiFetch(API.SERVICOS_CRIAR, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -200,7 +192,7 @@ export default function Settings() {
           valor: toNumber(novoServico.valor),
           imposto_percentual: toNumber(novoServico.imposto_percentual || 0),
         };
-        const resNovo = await fetch(API.SERVICOS_CRIAR, {
+        const resNovo = await apiFetch(API.SERVICOS_CRIAR, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payloadNovo),
@@ -212,12 +204,10 @@ export default function Settings() {
 
       // Recarrega a lista para refletir ids e valores corretos
       try {
-        const resList = await fetch(API.LISTAR);
-        const dataList = await resList.json();
-        if (resList.ok) setImpostos(Array.isArray(dataList) ? dataList : []);
-        const resSvc = await fetch(API.SERVICOS_LISTAR);
-        const dataSvc = await resSvc.json();
-        if (resSvc.ok) setServicos(Array.isArray(dataSvc) ? dataSvc : []);
+        const dataList = await apiJson(API.LISTAR);
+        setImpostos(Array.isArray(dataList) ? dataList : []);
+        const dataSvc = await apiJson(API.SERVICOS_LISTAR);
+        setServicos(Array.isArray(dataSvc) ? dataSvc : []);
       } catch {}
 
       setSaved('Alterações salvas com sucesso.');

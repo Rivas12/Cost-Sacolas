@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './Settings.css'; // Reutiliza estilos globais (cards, tabelas, botões)
+import { apiFetch, apiJson } from '../utils/apiClient';
 
 export default function Gramaturas() {
   const [itens, setItens] = useState([]);
@@ -10,10 +11,10 @@ export default function Gramaturas() {
   const [saved, setSaved] = useState('');
 
   const API = {
-    LISTAR: '/api/gramaturas',
-    CRIAR: '/api/gramaturas',
-    ATUALIZAR: (id) => `/api/gramaturas/${id}`,
-    DELETAR: (id) => `/api/gramaturas/${id}`,
+    LISTAR: '/gramaturas',
+    CRIAR: '/gramaturas',
+    ATUALIZAR: (id) => `/gramaturas/${id}`,
+    DELETAR: (id) => `/gramaturas/${id}`,
   };
 
   const toNumber = (val) => {
@@ -32,9 +33,7 @@ export default function Gramaturas() {
   const carregar = async () => {
     setLoading(true); setError('');
     try {
-      const res = await fetch(API.LISTAR);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Erro ao buscar gramaturas');
+      const data = await apiJson(API.LISTAR);
       const lista = Array.isArray(data) ? data : [];
       setItens(lista.map((g) => ({
         ...g,
@@ -57,7 +56,7 @@ export default function Gramaturas() {
       setItens((list) => list.filter((i) => i.id !== id));
       return;
     }
-    const res = await fetch(API.DELETAR(id), { method: 'DELETE' });
+    const res = await apiFetch(API.DELETAR(id), { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) {
       setError(data?.error || 'Falha ao excluir');
@@ -79,7 +78,7 @@ export default function Gramaturas() {
             altura_cm: maybeNumberOrNull(g.altura_cm),
             icms_estadual: maybeNumberOrNull(g.icms_estadual),
           };
-          const res = await fetch(API.ATUALIZAR(g.id), {
+          const res = await apiFetch(API.ATUALIZAR(g.id), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -100,7 +99,7 @@ export default function Gramaturas() {
           altura_cm: maybeNumberOrNull(g.altura_cm),
           icms_estadual: maybeNumberOrNull(g.icms_estadual),
         };
-        const res = await fetch(API.CRIAR, {
+        const res = await apiFetch(API.CRIAR, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -117,7 +116,7 @@ export default function Gramaturas() {
           altura_cm: maybeNumberOrNull(novo.altura_cm),
           icms_estadual: maybeNumberOrNull(novo.icms_estadual),
         };
-        const res = await fetch(API.CRIAR, {
+        const res = await apiFetch(API.CRIAR, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
