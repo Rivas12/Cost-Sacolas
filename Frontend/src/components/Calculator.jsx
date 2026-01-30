@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './Calculator.css';
 import { useSettings } from '../context/SettingsContext';
-import { apiJson } from '../utils/apiClient';
+import { apiJson, apiFetch } from '../utils/apiClient';
 
 // Endpoints (paths)
 const API_PATHS = {
