@@ -140,7 +140,7 @@ export default function Calculator({ onOpenBatch }) {
     const value = isCheckbox ? e.target.checked : e.target.value;
     setForm((f) => {
       const next = { ...f, [field]: value };
-      // Quando desmarca incluir_lateral, incluir_fundo ou incluir_desconto, zera o valor do campo correspondente
+      // Quando desmarca incluir_lateral, incluir_fundo, incluir_desconto, zera o valor do campo correspondente
       if (isCheckbox && !value) {
         if (field === 'incluir_lateral') next.lateral_cm = '';
         if (field === 'incluir_fundo') next.fundo_cm = '';
@@ -188,6 +188,7 @@ export default function Calculator({ onOpenBatch }) {
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         incluir_valor_silk: false,
         valor_silk: 0,
+        ipi_percentual: parseFloat(settings.ipi_percentual || 0),
         servicos: (servicosSelecionados || []).map((id) => {
           const svc = servicos.find((s) => String(s.id) === String(id));
           return svc ? {
@@ -255,6 +256,7 @@ export default function Calculator({ onOpenBatch }) {
         cliente_tem_ie: Boolean(form.cliente_tem_ie),
         incluir_valor_silk: false,
         valor_silk: undefined,
+        ipi_percentual: parseFloat(settings.ipi_percentual || 0),
         servicos: (servicosSelecionados || []).map((id) => {
           const svc = servicos.find((s) => String(s.id) === String(id));
           return svc ? {
@@ -439,19 +441,8 @@ export default function Calculator({ onOpenBatch }) {
               <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
               Incluir desconto (%)
             </label>
-            <label>
-              <input type="checkbox" checked={form.incluir_ipi} onChange={update('incluir_ipi')} />
-              Incluir IPI
-            </label>
           </div>
         </div>
-
-        {form.incluir_ipi && (
-          <div className="calc-field" style={{marginTop: 12}}>
-            <label>IPI (%)</label>
-            <input type="number" step="0.01" min="0" max="100" placeholder="Ex.: 15" value={form.ipi_percentual} onChange={update('ipi_percentual')} />
-          </div>
-        )}
 
         {servicos && servicos.length > 0 && (
           <div className="services-box">
@@ -514,16 +505,16 @@ export default function Calculator({ onOpenBatch }) {
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
             </div>
             <div className="result-highlight">
-              <span>Preço final (produto + serviços)</span>
+              <span>Preço final (produto + IPI{servicosSelecionados.length > 0 ? ' + serviços' : ''})</span>
               <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
             </div>
           </div>
 
           <div className="result-grid">
-            <div className="result-box"><span>Valor unitário (com serviços)</span><strong>R$ {(resultado.preco_final / (resultado.quantidade )).toFixed(2)}</strong></div>
+            <div className="result-box"><span>Valor unitário (sem IPI{servicosSelecionados.length > 0 ? ', com serviços' : ''})</span><strong>R$ {((resultado.preco_final_produto + Number(resultado.preco_final_servicos || 0)) / (resultado.quantidade )).toFixed(4)}</strong></div>
             <div className="result-box"><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
-            <div className="result-box"><span>Valor total (somado)</span><strong>R$ {resultado.preco_final.toFixed(2)}</strong></div>
+            <div className="result-box"><span>Valor IPI</span><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></div>
           </div>
 
           {/* Bloco público mostrando aproveitamento da altura (visível sem desbloquear etapas) */}
@@ -617,80 +608,100 @@ export default function Calculator({ onOpenBatch }) {
               <table className="result-table">
                 <thead>
                   <tr>
-                    <th>Etapas</th>
-                    <th className="num">Percentual</th>
+                    <th>Composição do Preço Final</th>
+                    <th className="num">%</th>
                     <th className="num">Valor</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Perdas (calibração)</td>
-                    <td className="num">
-                      {(() => {
-                        const perdasUn = Math.max(0, Number(resultado.quantidade_total || 0) - Number(resultado.quantidade || 0));
-                        const perdasVal = perdasUn * Number(resultado.custo_real || 0);
-                        const denom = Number(resultado.preco_final_produto || resultado.preco_final || 0);
-                        const pct = denom > 0 ? (perdasVal / denom) * 100 : 0;
-                        return `${pct.toFixed(2)}%`;
-                      })()}
-                    </td>
-                    <td className="num">
-                      R$ {(
-                        (Number(resultado.quantidade_total || 0) - Number(resultado.quantidade || 0))
-                        * Number(resultado.custo_real || 0)
-                      ).toFixed(2)}
-                    </td>
+                    <td><strong>1. Margem de Lucro</strong></td>
+                    <td className="num"><strong>{resultado.margem_percentual.toFixed(2)}%</strong></td>
+                    <td className="num"><strong>R$ {resultado.valor_margem.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td>Custo do material</td>
-                    <td className="num">{(() => {
-                      const materialVal = Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0);
-                      const denom = Number(resultado.preco_final_produto || resultado.preco_final || 0);
-                      const pct = denom > 0 ? (materialVal / denom) * 100 : 0;
-                      return `${pct.toFixed(2)}%`;
-                    })()}</td>
-                    <td className="num">R$ {(Number(resultado.quantidade || 0) * Number(resultado.custo_real || 0)).toFixed(2)}</td>
+                    <td><strong>2. Comissão (% por dentro)</strong></td>
+                    <td className="num"><strong>{resultado.comissao_percentual.toFixed(2)}%</strong></td>
+                    <td className="num"><strong>R$ {resultado.valor_comissao.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td>Margem</td>
-                    <td className="num">{resultado.margem_percentual}%</td>
-                    <td className="num">R$ {resultado.valor_margem.toFixed(2)}</td>
+                    <td><strong>3. IPI</strong></td>
+                    <td className="num"><strong>{resultado.ipi_percentual.toFixed(2)}%</strong></td>
+                    <td className="num"><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td>Comissão</td>
-                    <td className="num">{resultado.comissao_percentual}%</td>
-                    <td className="num">R$ {resultado.valor_comissao.toFixed(2)}</td>
+                    <td><strong>4. Impostos s/ Receita</strong></td>
+                    <td className="num"><strong>{resultado.impostos_fixos_percentual.toFixed(2)}%</strong></td>
+                    <td className="num"><strong>R$ {resultado.valor_impostos_fixos.toFixed(2)}</strong></td>
                   </tr>
                   {Array.isArray(resultado.impostos_fixos_detalhe) && resultado.impostos_fixos_detalhe
-                    .filter((imp) => Number(imp.percentual || 0) > 0 && Math.abs(Number(imp.percentual || 0)) >= 0.0001)
+                    .filter((imp) => Number(imp.percentual || 0) > 0.0001)
                     .map((imp, idx) => {
                       const pct = Number(imp.percentual || 0);
-                      const val = Number(resultado.preco_final_produto || resultado.preco_final || 0) * (pct / 100);
-                      if (Math.abs(val) < 0.0001) return null;
+                      const val = resultado.preco_final_produto * (pct / 100);
                       return (
-                        <tr key={`imp-${idx}`}>
-                          <td> {imp.nome}</td>
+                        <tr key={`imp-${idx}`} style={{fontSize: '0.9em'}}>
+                          <td style={{paddingLeft: '40px'}}>• {imp.nome}</td>
                           <td className="num">{pct.toFixed(2)}%</td>
                           <td className="num">R$ {val.toFixed(2)}</td>
                         </tr>
                       );
                     })}
-                  {(Number(resultado.icms_percentual || 0) !== 0 && Math.abs(Number(resultado.valor_icms || 0)) >= 0.0001) && (
+                  {(Number(resultado.icms_percentual || 0) > 0.0001) && (
+                    <>
+                      <tr>
+                        <td><strong>5. ICMS</strong></td>
+                        <td className="num"><strong>{resultado.icms_percentual.toFixed(2)}%</strong></td>
+                        <td className="num"><strong>R$ {resultado.valor_icms.toFixed(2)}</strong></td>
+                      </tr>
+                      <tr style={{fontSize: '0.9em'}}>
+                        <td style={{paddingLeft: '40px'}}>• Origem: {resultado.icms_origem}</td>
+                        <td className="num">—</td>
+                        <td className="num">—</td>
+                      </tr>
+                    </>
+                  )}
+                  {(Number(resultado.desconto_percentual || 0) > 0.0001) && (
                     <tr>
-                      <td>ICMS</td>
-                      <td className="num">{resultado.icms_percentual}%</td>
-                      <td className="num">R$ {resultado.valor_icms.toFixed(2)}</td>
+                      <td><strong>Desconto</strong></td>
+                      <td className="num"><strong>{resultado.desconto_percentual.toFixed(2)}%</strong></td>
+                      <td className="num"><strong>-R$ {resultado.valor_desconto.toFixed(2)}</strong></td>
                     </tr>
                   )}
+                  <tr style={{borderTop: '1px solid #e5e7eb'}}>
+                    <td><strong>= Custo Base</strong></td>
+                    <td className="num">—</td>
+                    <td className="num"><strong>R$ {resultado.custo_base.toFixed(2)}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <table className="result-table" style={{marginTop: 16}}>
+                <thead>
                   <tr>
-                    <td>IPI</td>
-                    <td className="num">{resultado.ipi_percentual}%</td>
-                    <td className="num">R$ {resultado.valor_ipi.toFixed(2)}</td>
+                    <th colSpan="3">Detalhamento do Custo Base</th>
                   </tr>
                   <tr>
-                    <td>Outros custos</td>
-                    <td className="num">{resultado.outros_custos_percentual}%</td>
-                    <td className="num">R$ {resultado.valor_outros.toFixed(2)}</td>
+                    <th>Item</th>
+                    <th className="num">Unitário</th>
+                    <th className="num">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Custo do material</td>
+                    <td className="num">R$ {resultado.custo_real.toFixed(2)}</td>
+                    <td className="num">R$ {resultado.custo_material_total.toFixed(2)}</td>
+                  </tr>
+                  <tr style={{fontSize: '0.9em'}}>
+                    <td style={{paddingLeft: '40px'}}>• Perdas ({resultado.perdas_calibracao_un} un)</td>
+                    <td className="num">R$ {resultado.custo_real.toFixed(2)}</td>
+                    <td className="num">R$ {(resultado.perdas_calibracao_un * resultado.custo_real).toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                    <td>Custos operacionais ({resultado.custo_operacional_percentual}%)</td>
+                    <td className="num">—</td>
+                    <td className="num">R$ {resultado.custo_operacional_valor.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>

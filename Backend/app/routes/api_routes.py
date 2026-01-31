@@ -817,7 +817,11 @@ def calcular_preco():
     # IPI - Imposto sobre Produtos Industrializados (da configuração)
     ipi_percentual_cfg = float(cfg.get('ipi_percentual', 0) or 0)
     try:
-        ipi_percentual = float(data.get('ipi_percentual', ipi_percentual_cfg) or 0)
+        ipi_value = data.get('ipi_percentual')
+        if ipi_value is not None and str(ipi_value).strip() != '' and str(ipi_value).strip() != '0':
+            ipi_percentual = float(ipi_value)
+        else:
+            ipi_percentual = ipi_percentual_cfg
     except Exception:
         ipi_percentual = ipi_percentual_cfg
     
@@ -923,73 +927,105 @@ def calcular_preco():
     total_impostos_fixos = sum([float(imp.get('valor') or 0) for imp in impostos_fixos])
     impostos_detalhe = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
 
-    # Decimais originais (antes de eventual desconto que reduz a margem)
-    margem_decimal_original = margem / 100
-    comissao_decimal = comissao / 100
-    outros_custos_decimal = outros_custos / 100
-    impostos_decimal = total_impostos_fixos / 100
-    icms_decimal = icms / 100
-    ipi_decimal = ipi_percentual / 100
+    # ===== NOVA LÓGICA DE CÁLCULO (TOP-DOWN) =====
+    # A margem, impostos, comissão, IPI e ICMS são EXTRAÍDOS do preço final (% por dentro)
+    # Sequência:
+    # 1. Calcular Custo Base = Material + Custos Operacionais
+    # 2. Resolver a equação: Preço Final = Custo Base / (1 - Σ%)
+    #    Onde Σ% = Margem + Comissão + Impostos + ICMS + IPI + Outros Custos (como %)
+    # 3. Extrair cada componente do Preço Final
 
-    # Custo por unidade do material (sem silk) — silk será tratado como serviço separado (NF de serviço)
     # Ajustes de dimensão: lateral dobra (2x) e soma à largura; fundo soma à altura (sem dobrar)
     lateral_effective = (lateral_cm or 0) * 2.0
     largura_used = float(largura_cm or 0) + lateral_effective
 
-    # custo por unidade considera a largura efetiva usada
+    # Custo por unidade considera a largura efetiva usada
     custo_material_unit = custo_un * (largura_used / 100)
-    # custo_real agora representa apenas o custo do produto (sem serviço)
     custo_real = round(custo_material_unit, 2)
 
-    # Quantidade total considerada inclui perdas de calibração (unidades extras)
+    # Quantidade total considerada inclui perdas de calibração
     quantidade_total = max(0, quantidade + max(0, perdas_calibracao_un))
 
-    # Total de silk (por unidade x quantidade solicitada) — serviço faturado separado, sem perdas
-    valor_silk_total = round((valor_silk_unit or 0) * quantidade, 2)
-    # Total de serviços (lista) — por unidade x quantidade, sem perdas
-    valor_servicos_total = round((valor_servicos_unit or 0) * quantidade, 2)
-
-    # Custo total do produto (sem silk), inclui perdas de calibração
+    # Custo total do produto (sem silk)
     custo_total = round(custo_real * quantidade_total, 2)
 
-    # Calcula o preço final usando a margem original (para comparar/mostrar economia)
-    total_percentual_original = margem_decimal_original + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
-    denom_orig = max(1e-9, (1 - total_percentual_original))
-    preco_final_sem_desconto = round(custo_total / denom_orig, 2)
+    # Total de silk e serviços (por unidade x quantidade, sem perdas)
+    valor_silk_total = round((valor_silk_unit or 0) * quantidade, 2)
+    valor_servicos_total = round((valor_servicos_unit or 0) * quantidade, 2)
 
-    # Se houver desconto, ele reduz a margem percentual aplicada
+    # ==== ETAPA 1: Custo Base = Material + Custos Operacionais ====
+    valor_custos_operacionais = round(custo_total * (outros_custos / 100) if outros_custos > 0 else 0, 2)
+    custo_base = round(custo_total + valor_custos_operacionais, 2)
+
+    # ==== ETAPA 2: Aplicar desconto na margem (se houver) ====
     margem_aplicada = margem
     if incluir_desconto:
         try:
             margem_aplicada = max(0.0, float(margem) - float(desconto_percentual or 0))
         except Exception:
             margem_aplicada = max(0.0, float(margem))
-    margem_decimal_aplicada = margem_aplicada / 100.0
 
-    # Soma de percentuais com margem aplicada
-    # IPI é adicionado após ICMS (calcula sobre o preço com ICMS incluído)
-    total_percentual = margem_decimal_aplicada + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal + ipi_decimal
+    # ==== ETAPA 3: Resolver equação para Preço Final ====
+    # Todos os percentuais são "por dentro" (extraídos do preço final)
+    # Percentuais em formato decimal
+    margem_dec = margem_aplicada / 100 if margem_aplicada > 0 else 0
+    comissao_dec = comissao / 100 if comissao > 0 else 0
+    impostos_dec = total_impostos_fixos / 100 if total_impostos_fixos > 0 else 0
+    icms_dec = icms / 100 if icms > 0 else 0
+    ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
+    outros_dec = outros_custos / 100 if outros_custos > 0 else 0
 
-    # Preço final do PRODUTO (sem serviços) resolve a equação: P = custo_total + total_percentual * P  =>  P = custo_total / (1 - total_percentual)
-    denom = max(1e-9, (1 - total_percentual))
-    preco_final_produto = round(custo_total / denom, 2)
+    # Soma de todos os percentuais
+    soma_percentuais = margem_dec + comissao_dec + impostos_dec + icms_dec + ipi_dec + outros_dec
 
-    # Serviços (silk) são somados por fora, sem incidência de impostos percentuais
+    # Garantir que a soma não atinja ou ultrapasse 100%
+    if soma_percentuais >= 1.0:
+        soma_percentuais = 0.99  # Máximo de 99%
+
+    # Preço Final resolvendo: P = C / (1 - Σ%)
+    denom = max(1e-9, (1 - soma_percentuais))
+    preco_final_produto = round(custo_base / denom, 2)
+
+    # ==== ETAPA 4: Extrair cada componente como % do preço final ====
+    valor_margem = round(preco_final_produto * margem_dec, 2)
+    valor_comissao = round(preco_final_produto * comissao_dec, 2)
+    valor_impostos = round(preco_final_produto * impostos_dec, 2)
+    valor_icms = round(preco_final_produto * icms_dec, 2)
+    valor_ipi = round(preco_final_produto * ipi_dec, 2) if ipi_dec > 0 else 0
+    valor_custos_operacionais_final = round(preco_final_produto * outros_dec, 2)
+
+    # ==== ETAPA 5: Preço com desconto (economia) ====
+    # Se houver desconto na margem, mostrar o preço sem desconto
+    if incluir_desconto and desconto_percentual > 0:
+        margem_sem_desc = margem
+        margem_sem_desc_dec = margem_sem_desc / 100 if margem_sem_desc > 0 else 0
+        soma_percentuais_sem_desc = margem_sem_desc_dec + comissao_dec + impostos_dec + icms_dec + ipi_dec + outros_dec
+        if soma_percentuais_sem_desc >= 1.0:
+            soma_percentuais_sem_desc = 0.99
+        denom_sem_desc = max(1e-9, (1 - soma_percentuais_sem_desc))
+        preco_final_sem_desconto = round(custo_base / denom_sem_desc, 2)
+        valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2)
+    else:
+        preco_final_sem_desconto = preco_final_produto
+        valor_desconto = 0
+
+    # ==== ETAPA 6: Soma com serviços (silk) ====
     preco_final_total = round(preco_final_produto + valor_silk_total + valor_servicos_total, 2)
 
-    # Decomposição: percentuais incidem sobre o preço final (já com margem aplicada)
-    valor_margem = round(preco_final_produto * margem_decimal_aplicada, 2)
-    valor_comissao = round(preco_final_produto * comissao_decimal, 2)
-    valor_outros = round(preco_final_produto * outros_custos_decimal, 2)
-    valor_impostos = round(preco_final_produto * impostos_decimal, 2)
-    valor_icms = round(preco_final_produto * icms_decimal, 2)
-    valor_ipi = round(preco_final_produto * ipi_decimal, 2)
+    # ==== Verificação: soma dos componentes deve fechar o preço ====
+    check = round(
+        custo_base + 
+        valor_margem + 
+        valor_comissao + 
+        valor_impostos + 
+        valor_icms + 
+        valor_ipi + 
+        valor_custos_operacionais_final, 
+        2
+    )
 
-    # Valor economizado por causa do desconto na margem (diferença entre sem desconto e com margem aplicada)
-    valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2) if incluir_desconto else 0.0
-
-    # Verificação: custo total + componentes percentuais deve fechar o preço final
-    check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms + valor_ipi, 2)
+    # Para compatibilidade, manter alguns campos
+    valor_outros = valor_custos_operacionais
 
     # Cálculo de aproveitamento da altura da bobina (percentual da bobina que será usado
     # ao encaixar o maior número inteiro de unidades por bobina)
@@ -1061,62 +1097,76 @@ def calcular_preco():
         pass
 
     return jsonify({
+        # ===== INFORMAÇÕES BÁSICAS =====
         'gramatura_nome': gramatura_nome,
         'gramatura_altura_cm': altura_cm_db,
-        # custo_un ajustado: custo unitário considerando perdas (custo_total / quantidade solicitada)
-    'custo_un': round((custo_total / max(1, quantidade)), 2),
         'largura_cm': largura_cm,
-    # custo_real: custo por unidade do produto (sem serviços)
-    'custo_real': round(custo_real, 2),
-    'custo_total': custo_total,
-        'margem_percentual': margem,
-        'comissao_percentual': comissao,
-        'outros_custos_percentual': outros_custos,
-        'impostos_fixos_percentual': round(total_impostos_fixos, 2),
-    'icms_percentual': round(icms, 2),
-    'icms_origem': icms_origem,
-        'impostos_fixos_detalhe': impostos_detalhe,
+        'altura_produto_cm': altura_produto,
         'quantidade': quantidade,
         'perdas_calibracao_un': perdas_calibracao_un,
         'quantidade_total': quantidade_total,
-        'valor_margem': valor_margem,
-        'valor_comissao': valor_comissao,
-        'valor_outros': valor_outros,
-        'valor_impostos_fixos': valor_impostos,
-        'valor_icms': valor_icms,
+        
+        # ===== BASE DE DADOS (CUSTO) =====
+        'custo_un': round((custo_total / max(1, quantidade)), 2),
+        'custo_real': round(custo_real, 2),
+        'custo_material_total': round(custo_total, 2),
+        'custo_operacional_percentual': round(outros_custos, 2),
+        'custo_operacional_valor': round(valor_custos_operacionais, 2),
+        'custo_base': round(custo_base, 2),
+        
+        # ===== COMPOSIÇÃO DO PREÇO FINAL (extraído de cima para baixo) =====
+        'margem_percentual': round(margem_aplicada, 2),
+        'valor_margem': round(valor_margem, 2),
+        
+        'comissao_percentual': round(comissao, 2),
+        'valor_comissao': round(valor_comissao, 2),
+        
+        'impostos_fixos_percentual': round(total_impostos_fixos, 2),
+        'impostos_fixos_detalhe': impostos_detalhe,
+        'valor_impostos_fixos': round(valor_impostos, 2),
+        
+        'icms_percentual': round(icms, 2),
+        'icms_origem': icms_origem,
+        'valor_icms': round(valor_icms, 2),
+        
+        # ===== IPI =====
         'ipi_percentual': round(ipi_percentual, 2),
-        'valor_ipi': valor_ipi,
-    # Serviços (ex.: silk) faturados em NF de serviço
-    'valor_silk': valor_silk_total,  # compatibilidade
-    'valor_silk_unitario': round(valor_silk_unit, 2),
-    'valor_silk_total': valor_silk_total,
-    'valor_servicos_unitario': round(valor_servicos_unit, 2),
-    'valor_servicos_total': valor_servicos_total,
-    'servicos_detalhe': servicos_detalhe,
-        'incluir_valor_silk': incluir_valor_silk,
-        'incluir_lateral': incluir_lateral,
-        'incluir_alca': incluir_alca,
-    'incluir_fundo': incluir_fundo,
-    'lateral_cm': lateral_cm,
-    'fundo_cm': fundo_cm,
-    'largura_utilizada_cm': round(largura_used, 2),
-    'altura_utilizada_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
-    # Preços: produto separado de serviços
-    'preco_final_produto': preco_final_produto,
-    'preco_final_servicos': valor_silk_total + valor_servicos_total,
-    'preco_final': preco_final_total,  # mantém campo antigo como total (produto + serviços)
+        'valor_ipi': round(valor_ipi, 2),
+        
+        # ===== DESCONTO =====
         'incluir_desconto': incluir_desconto,
         'desconto_percentual': round(desconto_percentual, 2),
-        'margem_aplicada_percentual': round(margem_aplicada, 2),
         'valor_desconto': round(valor_desconto, 2),
-        'check': check,
-        'altura_produto_cm': altura_produto,
+        
+        # ===== PREÇOS FINAIS =====
+        'preco_final_produto': round(preco_final_produto, 2),
+        'preco_final_servicos': round(valor_silk_total + valor_servicos_total, 2),
+        'preco_final': round(preco_final_total, 2),
+        'preco_final_sem_desconto': round(preco_final_sem_desconto, 2),
+        
+        # ===== SERVIÇOS (SILK) =====
+        'incluir_valor_silk': incluir_valor_silk,
+        'valor_silk_unitario': round(valor_silk_unit, 2),
+        'valor_silk_total': round(valor_silk_total, 2),
+        'valor_servicos_unitario': round(valor_servicos_unit, 2),
+        'valor_servicos_total': round(valor_servicos_total, 2),
+        'servicos_detalhe': servicos_detalhe,
+        
+        # ===== DIMENSÕES EFETIVAS =====
+        'incluir_lateral': incluir_lateral,
+        'incluir_alca': incluir_alca,
+        'incluir_fundo': incluir_fundo,
+        'lateral_cm': lateral_cm,
+        'fundo_cm': fundo_cm,
+        'largura_utilizada_cm': round(largura_used, 2),
+        'altura_utilizada_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
+        'tamanho_alca': float(tamanho_alca or 0),
+        'valor_alca': float(tamanho_alca or 0),
+        'altura_unit_effective_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
+        
+        # ===== APROVEITAMENTO =====
         'aproveitamento_altura_percentual': aproveitamento_percentual,
         'unidades_por_bobina': unidades_por_bobina if unidades_por_bobina is not None else (unidades_por_bobina_calc or 0),
-    # Expose tamanho_alca (saved value). Keep valor_alca for compatibility but it mirrors tamanho_alca.
-    'tamanho_alca': float(tamanho_alca or 0),
-    'valor_alca': float(tamanho_alca or 0),
-        'altura_unit_effective_cm': round(altura_unit_effective_value, 2) if altura_unit_effective_value is not None else None,
         'aproveitamento_detalhe': aproveitamento_detalhe,
         'utilizada_por_bobina_cm': round(utilizada_por_bobina_value, 2) if utilizada_por_bobina_value is not None else None,
         'sobra_por_bobina_cm': round(sobra_por_bobina, 2) if sobra_por_bobina is not None else None,
@@ -1124,6 +1174,9 @@ def calcular_preco():
         'total_altura_necessaria_cm': round(total_altura_needed, 2) if total_altura_needed is not None else None,
         'total_bobinas_necessarias': total_bobinas,
         'sobra_total_cm': round(sobra_total, 2) if sobra_total is not None else None,
+        
+        # ===== VALIDAÇÃO =====
+        'check': round(check, 2),
     })
 
 
