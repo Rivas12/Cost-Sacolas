@@ -22,6 +22,7 @@ def get_configuracoes(require_existing: bool = False):
             'perdas_calibracao_un': 0,
             'valor_silk': 0.0,
             'tamanho_alca': 0.0,
+            'ipi_percentual': 0.0,
         }
 
     if has_tamanho_alca:
@@ -33,6 +34,7 @@ def get_configuracoes(require_existing: bool = False):
             'perdas_calibracao_un': int(row.get('perdas_calibracao_un') or 0),
             'valor_silk': float(row.get('valor_silk') or 0.0),
             'tamanho_alca': float(row.get('tamanho_alca') or 0.0),
+            'ipi_percentual': float(row.get('ipi_percentual') or 0.0),
         }
     else:
         return {
@@ -43,9 +45,10 @@ def get_configuracoes(require_existing: bool = False):
             'perdas_calibracao_un': int(row.get('perdas_calibracao_un') or 0),
             'valor_silk': float(row.get('valor_silk') or 0.0),
             'tamanho_alca': 0.0,
+            'ipi_percentual': float(row.get('ipi_percentual') or 0.0),
         }
 
-def update_configuracoes(margem=None, outros_custos=None, tema=None, notificacoes=None, perdas_calibracao_un=None, valor_silk=None, tamanho_alca=None):
+def update_configuracoes(margem=None, outros_custos=None, tema=None, notificacoes=None, perdas_calibracao_un=None, valor_silk=None, tamanho_alca=None, ipi_percentual=None):
     updates = {}
     if margem is not None:
         updates['margem'] = float(margem)
@@ -71,6 +74,11 @@ def update_configuracoes(margem=None, outros_custos=None, tema=None, notificacoe
             updates['tamanho_alca'] = float(tamanho_alca)
         except Exception:
             updates['tamanho_alca'] = 0.0
+    if ipi_percentual is not None:
+        try:
+            updates['ipi_percentual'] = float(ipi_percentual)
+        except Exception:
+            updates['ipi_percentual'] = 0.0
 
     if not updates:
         return False

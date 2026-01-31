@@ -117,6 +117,7 @@ export default function Settings() {
         outros_custos: toNumber(settings.outros_custos),
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         tamanho_alca: parseFloat(settings.tamanho_alca || 0),
+        ipi_percentual: parseFloat(settings.ipi_percentual || 0),
         tema: settings.tema,
         notificacoes: !!settings.notificacoes,
       };
@@ -290,6 +291,23 @@ export default function Settings() {
               <span className="suffix">cm</span>
             </div>
             <small>Altura fixa em cm que será somada quando "Incluir alça" estiver marcado</small>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="ipi">IPI (%)</label>
+            <div className="input-suffix">
+              <input
+                id="ipi"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0,00"
+                value={settings.ipi_percentual ?? ''}
+                onChange={(e) => setSettings((s) => ({ ...s, ipi_percentual: e.target.value }))}
+              />
+              <span className="suffix">%</span>
+            </div>
+            <small>Percentual de IPI a ser aplicado</small>
           </div>
         </div>
 

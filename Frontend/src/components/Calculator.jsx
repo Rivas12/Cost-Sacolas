@@ -31,7 +31,7 @@ export default function Calculator({ onOpenBatch }) {
     comissao: '1',
     quantidade: '2000',
     estado: 'SP',
-    cliente_tem_ie: true,
+    cliente_tem_ie: false,
     incluir_valor_silk: false,
     incluir_lateral: false,
     incluir_desconto: false,
@@ -439,8 +439,19 @@ export default function Calculator({ onOpenBatch }) {
               <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
               Incluir desconto (%)
             </label>
+            <label>
+              <input type="checkbox" checked={form.incluir_ipi} onChange={update('incluir_ipi')} />
+              Incluir IPI
+            </label>
           </div>
         </div>
+
+        {form.incluir_ipi && (
+          <div className="calc-field" style={{marginTop: 12}}>
+            <label>IPI (%)</label>
+            <input type="number" step="0.01" min="0" max="100" placeholder="Ex.: 15" value={form.ipi_percentual} onChange={update('ipi_percentual')} />
+          </div>
+        )}
 
         {servicos && servicos.length > 0 && (
           <div className="services-box">
@@ -671,6 +682,11 @@ export default function Calculator({ onOpenBatch }) {
                       <td className="num">R$ {resultado.valor_icms.toFixed(2)}</td>
                     </tr>
                   )}
+                  <tr>
+                    <td>IPI</td>
+                    <td className="num">{resultado.ipi_percentual}%</td>
+                    <td className="num">R$ {resultado.valor_ipi.toFixed(2)}</td>
+                  </tr>
                   <tr>
                     <td>Outros custos</td>
                     <td className="num">{resultado.outros_custos_percentual}%</td>

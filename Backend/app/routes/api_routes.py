@@ -26,8 +26,19 @@ try:
 except Exception:
     _CAFILE = None
 
-# Alíquotas padrão por estado (ICMS "cheio") usadas quando o cliente não possui IE
+# Alíquotas de ICMS interestadual reduzido (DIFAL) — para clientes COM IE em operações interestaduais
+# Estes são os valores guardados na gramatura quando cliente tem inscrição estadual
 ICMS_ESTADO_PADRAO = {
+    "AC": 7.0, "AL": 7.0, "AM": 7.0, "AP": 7.0, "BA": 7.0,
+    "CE": 7.0, "DF": 7.0, "ES": 7.0, "GO": 7.0, "MA": 7.0,
+    "MT": 7.0, "MS": 7.0, "MG": 7.0, "PA": 7.0, "PB": 7.0,
+    "PR": 7.0, "PE": 7.0, "PI": 7.0, "RJ": 7.0, "RN": 7.0,
+    "RS": 7.0, "RO": 7.0, "RR": 7.0, "SC": 7.0, "SP": 7.0,
+    "SE": 7.0, "TO": 7.0,
+}
+
+# Alíquotas completas de ICMS interno por estado — para clientes SEM IE (consumidor final, pessoa física)
+ICMS_CONSUMIDOR_FINAL = {
     "AC": 19.0, "AL": 19.0, "AM": 20.0, "AP": 18.0, "BA": 20.5,
     "CE": 20.0, "DF": 20.0, "ES": 17.0, "GO": 19.0, "MA": 23.0,
     "MT": 17.0, "MS": 17.0, "MG": 18.0, "PA": 19.0, "PB": 20.0,
@@ -519,6 +530,7 @@ def put_configs():
         perdas_calibracao_un=data.get('perdas_calibracao_un'),
         valor_silk=data.get('valor_silk'),
         tamanho_alca=data.get('tamanho_alca'),
+        ipi_percentual=data.get('ipi_percentual'),
     )
     if not ok:
         return jsonify({'error': 'Nada para atualizar'}), 400
@@ -801,6 +813,14 @@ def calcular_preco():
         tamanho_alca = float(data.get('tamanho_alca', tamanho_alca_cfg) or 0)
     except Exception:
         tamanho_alca = tamanho_alca_cfg
+    
+    # IPI - Imposto sobre Produtos Industrializados (da configuração)
+    ipi_percentual_cfg = float(cfg.get('ipi_percentual', 0) or 0)
+    try:
+        ipi_percentual = float(data.get('ipi_percentual', ipi_percentual_cfg) or 0)
+    except Exception:
+        ipi_percentual = ipi_percentual_cfg
+    
     lateral_cm = None
     fundo_cm = None
     try:
@@ -865,13 +885,24 @@ def calcular_preco():
     except Exception:
         icms_estadual_gram = None
 
-    # Determinar ICMS: com IE usa alíquota estadual guardada na gramatura (difal/interestadual); sem IE usa tabela padrão por UF
+    # Determinar ICMS:
+    # - Com IE e MESMO estado (SP): usa alíquota COMPLETA do estado (ex.: 18% em SP)
+    # - Com IE e estado DIFERENTE: usa alíquota REDUZIDA (DIFAL 7%)
+    # - Sem IE (consumidor final, pessoa física): usa alíquota COMPLETA do estado conforme ICMS_CONSUMIDOR_FINAL
+    ESTADO_EMPRESA = 'SP'  # A empresa opera em SP
     if cliente_tem_ie:
-        icms = icms_estadual_gram if icms_estadual_gram is not None else 0.0
-        icms_origem = 'icms_estadual_gramatura' if icms_estadual_gram is not None else 'icms_zero_ie_sem_aliquota'
+        if estado and estado == ESTADO_EMPRESA:
+            # Cliente tem IE e é do mesmo estado: usa alíquota completa estadual
+            icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
+            icms_origem = 'icms_completo_mesmo_estado'
+        else:
+            # Cliente tem IE mas é de outro estado: operação interestadual, usa alíquota reduzida (DIFAL 7%)
+            icms = float(ICMS_ESTADO_PADRAO.get(estado, 0.0)) if estado else 0.0
+            icms_origem = 'icms_reduzido_ie_outro_estado' if estado else 'icms_zero_sem_estado'
     else:
-        icms = float(ICMS_ESTADO_PADRAO.get(estado, 0.0)) if estado else 0.0
-        icms_origem = 'icms_estado_padrao' if estado else 'icms_zero_sem_estado'
+        # Cliente SEM IE (consumidor final): usa alíquota completa do estado
+        icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
+        icms_origem = 'icms_completo_consumidor_final' if estado else 'icms_zero_sem_estado'
     # altura do produto solicitada (pode vir no payload) - em cm
     # Validação: altura_cm é obrigatória e deve ser um número positivo
     altura_produto = None
@@ -898,6 +929,7 @@ def calcular_preco():
     outros_custos_decimal = outros_custos / 100
     impostos_decimal = total_impostos_fixos / 100
     icms_decimal = icms / 100
+    ipi_decimal = ipi_percentual / 100
 
     # Custo por unidade do material (sem silk) — silk será tratado como serviço separado (NF de serviço)
     # Ajustes de dimensão: lateral dobra (2x) e soma à largura; fundo soma à altura (sem dobrar)
@@ -935,7 +967,8 @@ def calcular_preco():
     margem_decimal_aplicada = margem_aplicada / 100.0
 
     # Soma de percentuais com margem aplicada
-    total_percentual = margem_decimal_aplicada + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal
+    # IPI é adicionado após ICMS (calcula sobre o preço com ICMS incluído)
+    total_percentual = margem_decimal_aplicada + comissao_decimal + outros_custos_decimal + impostos_decimal + icms_decimal + ipi_decimal
 
     # Preço final do PRODUTO (sem serviços) resolve a equação: P = custo_total + total_percentual * P  =>  P = custo_total / (1 - total_percentual)
     denom = max(1e-9, (1 - total_percentual))
@@ -950,12 +983,13 @@ def calcular_preco():
     valor_outros = round(preco_final_produto * outros_custos_decimal, 2)
     valor_impostos = round(preco_final_produto * impostos_decimal, 2)
     valor_icms = round(preco_final_produto * icms_decimal, 2)
+    valor_ipi = round(preco_final_produto * ipi_decimal, 2)
 
     # Valor economizado por causa do desconto na margem (diferença entre sem desconto e com margem aplicada)
     valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2) if incluir_desconto else 0.0
 
     # Verificação: custo total + componentes percentuais deve fechar o preço final
-    check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms, 2)
+    check = round(custo_total + valor_margem + valor_comissao + valor_outros + valor_impostos + valor_icms + valor_ipi, 2)
 
     # Cálculo de aproveitamento da altura da bobina (percentual da bobina que será usado
     # ao encaixar o maior número inteiro de unidades por bobina)
@@ -1050,6 +1084,8 @@ def calcular_preco():
         'valor_outros': valor_outros,
         'valor_impostos_fixos': valor_impostos,
         'valor_icms': valor_icms,
+        'ipi_percentual': round(ipi_percentual, 2),
+        'valor_ipi': valor_ipi,
     # Serviços (ex.: silk) faturados em NF de serviço
     'valor_silk': valor_silk_total,  # compatibilidade
     'valor_silk_unitario': round(valor_silk_unit, 2),

@@ -2,7 +2,8 @@ from app.supabase_client import get_client
 
 
 # Ordem de exibição: do mais comum para o menos comum
-# Importante: ICMS não entra aqui para evitar duplicidade com o ICMS do produto/difal
+# Importante: ICMS e IPI não entram aqui - ICMS para evitar duplicidade com o ICMS do produto/difal
+# e IPI é tratado como um percentual especial sobre o preço final
 IMPOSTOS_ORDEM = [
     "PIS",
     "COFINS",
