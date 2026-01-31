@@ -484,11 +484,7 @@ export default function Calculator({ onOpenBatch }) {
           >
             {batchLoading ? 'Gerando PDF...' : 'Calcular em lote'}
           </button>
-          {resultado && (
-            <button type="button" className="btn-ghost" onClick={enviarAprovacao} disabled={sending}>
-              {sending ? 'Enviando…' : 'Enviar para aprovação'}
-            </button>
-          )}
+
         </div>
 
         {batchMsg && <div className="calc-sub" style={{marginTop:8}}>{batchMsg}</div>}
