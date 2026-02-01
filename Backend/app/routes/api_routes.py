@@ -971,47 +971,48 @@ def calcular_preco():
         except Exception:
             margem_aplicada = max(0.0, float(margem))
 
-    # ==== ETAPA 3: Resolver equação para Preço Final (SEM IPI e SEM COMISSÃO) ====
+    # ==== ETAPA 3: Resolver equação para Preço Final (SEM IPI) ====
     # Todos os percentuais são "por dentro" (extraídos do preço final)
     # Percentuais em formato decimal
     margem_dec = margem_aplicada / 100 if margem_aplicada > 0 else 0
     impostos_dec = total_impostos_fixos / 100 if total_impostos_fixos > 0 else 0  # Inclui ICMS
     outros_dec = outros_custos / 100 if outros_custos > 0 else 0
+    comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
 
-    # Soma de todos os percentuais (SEM IPI e SEM COMISSÃO - ambos calculados depois)
-    soma_percentuais = margem_dec + impostos_dec + outros_dec
+    # Soma de todos os percentuais (SEM IPI - comissão agora está dentro)
+    soma_percentuais = margem_dec + impostos_dec + outros_dec + comissao_dec_aplicada
 
     # Garantir que a soma não atinja ou ultrapasse 100%
     if soma_percentuais >= 1.0:
         soma_percentuais = 0.99  # Máximo de 99%
 
-    # Preço Final SEM IPI e SEM COMISSÃO resolvendo: P = C / (1 - Σ%)
+    # Preço Final SEM IPI resolvendo: P = C / (1 - Σ%)
     denom = max(1e-9, (1 - soma_percentuais))
-    preco_final_produto_sem_ipi_e_comissao = round(custo_base / denom, 2)
+    preco_final_produto_sem_ipi = round(custo_base / denom, 2)
 
-    # ==== ETAPA 4: Aplicar IPI por fora (após margem e impostos) ====
+    # ==== ETAPA 4: Aplicar IPI por fora (após margem, impostos e comissão) ====
     ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
-    valor_ipi = round(preco_final_produto_sem_ipi_e_comissao * ipi_dec, 2) if ipi_dec > 0 else 0
-    preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi_e_comissao + valor_ipi, 2)
+    valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
+    preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
 
     # ==== ETAPA 5: Soma com serviços (silk) ====
     preco_final_com_servicos = round(preco_final_produto_com_ipi + valor_silk_total + valor_servicos_total, 2)
     preco_final_produto = preco_final_com_servicos
     preco_final_total = round(preco_final_produto, 2)
     
-    # ==== ETAPA 6: Extrair cada componente como % do preço SEM IPI/COMISSÃO ====
-    valor_impostos = round(preco_final_produto_sem_ipi_e_comissao * impostos_dec, 2)  # Inclui ICMS
-    valor_custos_operacionais_final = round(preco_final_produto_sem_ipi_e_comissao * outros_dec, 2)
+    # ==== ETAPA 6: Extrair cada componente como % do preço SEM IPI ====
+    valor_impostos = round(preco_final_produto_sem_ipi * impostos_dec, 2)  # Inclui ICMS
+    valor_custos_operacionais_final = round(preco_final_produto_sem_ipi * outros_dec, 2)
     
     # Extrair ICMS separado para exibição
     icms_dec_calc = icms / 100 if icms > 0 else 0
-    valor_icms = round(preco_final_produto_sem_ipi_e_comissao * icms_dec_calc, 2)
+    valor_icms = round(preco_final_produto_sem_ipi * icms_dec_calc, 2)
     
-    # Margem é calculada sobre o preço FINAL (com IPI e serviços)
-    valor_margem = round(preco_final_com_servicos * margem_dec, 2)
+    # Margem é calculada sobre o preço SEM IPI (já tem a comissão dentro)
+    valor_margem = round(preco_final_produto_sem_ipi * margem_dec, 2)
     
-    # Comissão = % do input de comissão do produto (com IPI) + serviços
-    comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
+    # Comissão é calculada sobre o preço SEM IPI (já está dentro da equação)
+    valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
     valor_comissao_produto = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
     valor_comissao_servicos = round((valor_silk_total + valor_servicos_total) * comissao_dec_aplicada, 2)
     valor_comissao = round(valor_comissao_produto + valor_comissao_servicos, 2)
@@ -1021,13 +1022,13 @@ def calcular_preco():
     if incluir_desconto and desconto_percentual > 0:
         margem_sem_desc = margem
         margem_sem_desc_dec = margem_sem_desc / 100 if margem_sem_desc > 0 else 0
-        soma_percentuais_sem_desc = margem_sem_desc_dec + impostos_dec + outros_dec
+        soma_percentuais_sem_desc = margem_sem_desc_dec + impostos_dec + outros_dec + comissao_dec_aplicada
         if soma_percentuais_sem_desc >= 1.0:
             soma_percentuais_sem_desc = 0.99
         denom_sem_desc = max(1e-9, (1 - soma_percentuais_sem_desc))
-        preco_final_produto_sem_ipi_e_comissao_sem_desc = round(custo_base / denom_sem_desc, 2)
-        valor_ipi_sem_desc = round(preco_final_produto_sem_ipi_e_comissao_sem_desc * ipi_dec, 2) if ipi_dec > 0 else 0
-        preco_final_produto_com_ipi_sem_desc = round(preco_final_produto_sem_ipi_e_comissao_sem_desc + valor_ipi_sem_desc, 2)
+        preco_final_produto_sem_ipi_sem_desc = round(custo_base / denom_sem_desc, 2)
+        valor_ipi_sem_desc = round(preco_final_produto_sem_ipi_sem_desc * ipi_dec, 2) if ipi_dec > 0 else 0
+        preco_final_produto_com_ipi_sem_desc = round(preco_final_produto_sem_ipi_sem_desc + valor_ipi_sem_desc, 2)
         preco_final_com_servicos_sem_desc = round(preco_final_produto_com_ipi_sem_desc + valor_silk_total + valor_servicos_total, 2)
         preco_final_sem_desconto = preco_final_com_servicos_sem_desc
         valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2)
@@ -1035,14 +1036,12 @@ def calcular_preco():
         preco_final_sem_desconto = preco_final_produto
         valor_desconto = 0
 
-    # ==== ETAPA 7: Soma com serviços (silk) ====
-    preco_final_total = round(preco_final_produto + valor_silk_total + valor_servicos_total, 2)
-
     # ==== Verificação: soma dos componentes deve fechar o preço ====
     check = round(
         custo_base + 
         valor_margem + 
         valor_impostos + 
+        valor_comissao + 
         valor_ipi + 
         valor_custos_operacionais_final, 
         2
@@ -1168,8 +1167,8 @@ def calcular_preco():
         'valor_desconto': round(valor_desconto, 2),
         # ===== PREÇOS FINAIS =====
         'preco_final_produto': round(preco_final_produto, 2),
-        'preco_final_produto_sem_ipi': round(preco_final_produto_sem_ipi_e_comissao, 2),
-        'preco_unitario_sem_ipi': round(preco_final_produto_sem_ipi_e_comissao / max(1, quantidade), 4),
+        'preco_final_produto_sem_ipi': round(preco_final_produto_sem_ipi, 2),
+        'preco_unitario_sem_ipi': round(preco_final_produto_sem_ipi / max(1, quantidade), 4),
         'preco_final_servicos': round(valor_silk_total + valor_servicos_total, 2),
         'preco_final': round(preco_final_total, 2),
         'preco_final_sem_desconto': round(preco_final_sem_desconto, 2),

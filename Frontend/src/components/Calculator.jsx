@@ -625,7 +625,7 @@ export default function Calculator({ onOpenBatch }) {
                     <td className="num"><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td><strong>3. Impostos s/ Receita</strong></td>
+                    <td><strong>3. Impostos</strong></td>
                     <td className="num"><strong>{resultado.impostos_fixos_percentual.toFixed(2)}%</strong></td>
                     <td className="num"><strong>R$ {resultado.valor_impostos_fixos.toFixed(2)}</strong></td>
                   </tr>
