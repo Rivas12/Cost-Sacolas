@@ -522,7 +522,7 @@ export default function Calculator({ onOpenBatch }) {
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
             </div>
             <div className="result-highlight">
-              <span>Preço final (produto + IPI{servicosSelecionados.length > 0 ? ' + serviços' : ''})</span>
+              <span>Preço final</span>
               <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
             </div>
           </div>
