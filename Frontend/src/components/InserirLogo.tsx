@@ -314,11 +314,35 @@ export default function InserirLogo() {
     setLogos((prev) => prev.map((logo) => (logo.id === selectedId ? { ...logo, scale: value } : logo)));
   };
 
+  // Função auxiliar para gerar canvas limpo (sem borda de seleção)
+  const getCleanCanvas = (): HTMLCanvasElement | null => {
+    if (!baseImage) return null;
+    
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = baseImage.width;
+    exportCanvas.height = baseImage.height;
+    const ctx = exportCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+    ctx.drawImage(baseImage, 0, 0, baseImage.width, baseImage.height);
+
+    logos.forEach((logo) => {
+      const drawWidth = logo.img.width * logo.scale;
+      const drawHeight = logo.img.height * logo.scale;
+      const drawX = logo.x - drawWidth / 2;
+      const drawY = logo.y - drawHeight / 2;
+      ctx.drawImage(logo.img, drawX, drawY, drawWidth, drawHeight);
+      // Não desenha a borda de seleção para exportação
+    });
+
+    return exportCanvas;
+  };
 
   const handleDownload = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const url = canvas.toDataURL('image/png');
+    const exportCanvas = getCleanCanvas();
+    if (!exportCanvas) return;
+    const url = exportCanvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.href = url;
     link.download = 'mockup-logo.png';
@@ -326,15 +350,15 @@ export default function InserirLogo() {
   };
 
   const handleCopyToClipboard = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const exportCanvas = getCleanCanvas();
+    if (!exportCanvas) return;
     if (!navigator.clipboard || !window.ClipboardItem) {
       setHint('Clipboard API não disponível neste navegador.');
       return;
     }
     setHint('Copiando imagem para a área de transferência...');
     await new Promise<void>((resolve) => {
-      canvas.toBlob(async (blob) => {
+      exportCanvas.toBlob(async (blob) => {
         if (!blob) {
           setHint('Falha ao gerar a imagem.');
           return resolve();
