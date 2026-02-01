@@ -17,7 +17,7 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.lib.units import mm
 try:
@@ -294,7 +294,7 @@ def gerar_pdf_batch_precos():
     try:
         # Monta PDF inspirado no layout comercial fornecido
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=25)
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=25, leftMargin=25, topMargin=25, bottomMargin=50)
         styles = getSampleStyleSheet()
 
         azul = colors.HexColor('#2F80ED')
@@ -310,6 +310,16 @@ def gerar_pdf_batch_precos():
         styles.add(ParagraphStyle(name='Cell', parent=styles['Normal'], textColor=cinza_texto, fontSize=10, leading=12))
         styles.add(ParagraphStyle(name='CellBold', parent=styles['Normal'], textColor=cinza_texto, fontSize=10, leading=12, fontName='Helvetica-Bold'))
         styles.add(ParagraphStyle(name='Footer', parent=styles['Normal'], fontSize=10, textColor=cinza_texto, alignment=TA_CENTER, leading=14))
+
+        # Função para desenhar rodapé fixo no fundo de cada página
+        def add_footer(canvas, doc):
+            canvas.saveState()
+            width, height = A4
+            canvas.setFont('Helvetica-Bold', 10)
+            canvas.drawCentredString(width / 2, 25, 'FIBERTNT BRASIL')
+            canvas.setFont('Helvetica', 9)
+            canvas.drawCentredString(width / 2, 13, 'https://fibertnt.com/')
+            canvas.restoreState()
 
         story = []
         agora = datetime.now()
@@ -400,13 +410,13 @@ def gerar_pdf_batch_precos():
         ))
 
         # ===== Tabela principal =====
-        header_cols = ['Nº', 'Descrição', 'Largura', 'Altura', 'Lateral', 'Fundo', 'Preço unit.', 'Preço total']
+        header_cols = ['Nº', 'Descrição', 'Largura', 'Altura', 'Lateral', 'Fundo', 'NF Produto', 'NF Serviço', 'Preço Final']
         rows = [header_cols]
 
         for idx, r in enumerate(resultados, start=1):
-            preco_val = float(r.get('preco_final') or 0)
-            quantidade_val = float(r.get('quantidade') or contexto.get('quantidade') or 0)
-            preco_unit = preco_val / quantidade_val if quantidade_val else None
+            preco_final_val = float(r.get('preco_final') or 0)
+            preco_produto_val = float(r.get('preco_final_produto') or 0)
+            preco_servicos_val = float(r.get('preco_final_servicos') or 0)
 
             rows.append([
                 str(idx),
@@ -415,8 +425,9 @@ def gerar_pdf_batch_precos():
                 fmt_num(r.get('altura_cm')),
                 'Não' if not r.get('lateral_cm') else fmt_num(r.get('lateral_cm')),
                 'Não' if not r.get('fundo_cm') else fmt_num(r.get('fundo_cm')),
-                fmt_money(preco_unit) if preco_unit is not None else '-',
-                fmt_money(preco_val),
+                fmt_money(preco_produto_val),
+                fmt_money(preco_servicos_val) if preco_servicos_val > 0 else '-',
+                fmt_money(preco_final_val),
             ])
 
         tabela_styles = [
@@ -427,10 +438,10 @@ def gerar_pdf_batch_precos():
             ('FONT', (0, 1), (-1, -1), 'Helvetica'),
             ('PADDING', (0, 0), (-1, -1), 6),
             ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
-            ('ALIGN', (-2, 1), (-1, -1), 'RIGHT'),
+            ('ALIGN', (-3, 1), (-1, -1), 'RIGHT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]
-        tabela = Table(rows, repeatRows=1, colWidths=[10*mm, 64*mm, 16*mm, 16*mm, 16*mm, 16*mm, 24*mm, 26*mm])
+        tabela = Table(rows, repeatRows=1, colWidths=[8*mm, 50*mm, 14*mm, 14*mm, 14*mm, 14*mm, 24*mm, 24*mm, 26*mm])
         tabela.setStyle(TableStyle(tabela_styles))
         story.append(tabela)
         story.append(Spacer(1, 26))
@@ -495,19 +506,62 @@ def gerar_pdf_batch_precos():
             story.append(Paragraph(c, styles['Cell']))
         story.append(Spacer(1, 14))
 
-        # ===== Observações =====
-        story.append(Paragraph('<b>OBSERVAÇÕES</b>', styles['SectionTitle']))
+        # ===== PÁGINA 2: TERMOS E CONDIÇÕES =====
+        story.append(PageBreak())
+
+        # Cabeçalho página 2
+        header2 = Table(
+            [[
+                Paragraph("<b>Eco<span color='#2F80ED'>Fiber</span></b>", styles['Logo']),
+                Paragraph("<b>TERMOS E CONDIÇÕES</b>", styles['Titulo'])
+            ]],
+            colWidths=[95*mm, 75*mm]
+        )
+        header2.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ]))
+        story.append(header2)
         story.append(Spacer(1, 4))
-        story.append(Paragraph('Caso deseje personalização, alteração de medidas ou inclusão de alça, favor solicitar nova simulação.', styles['Cell']))
-        story.append(Spacer(1, 18))
+        story.append(Table([[""],[" "]], colWidths=[doc.width], style=[('LINEABOVE',(0,0),(-1,0),0.8,cinza_grid)]))
+        story.append(Spacer(1, 10))
 
-        # ===== Rodapé =====
-        story.append(Paragraph('<b>FIBERTNT BRASIL</b><br/>contato@fibertnt.com.br | São Paulo – SP', styles['Footer']))
+        # Estilo para os termos
+        styles.add(ParagraphStyle(name='TermoTitulo', parent=styles['Normal'], fontSize=10, textColor=cinza_texto, fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=2, leading=12))
+        styles.add(ParagraphStyle(name='TermoTexto', parent=styles['Normal'], fontSize=9, textColor=cinza_texto, leading=11, spaceAfter=2))
 
-        doc.build(story)
+        # Fabricante info
+        story.append(Paragraph('<b>Fabricante:</b> FIBER TNT | ECOFIBER', styles['TermoTexto']))
+        story.append(Paragraph('<b>Razão Social:</b> MAT DISTRIBUIDORA LTDA | CNPJ: 29.956.187/0001-83', styles['TermoTexto']))
+        story.append(Paragraph('<b>Endereço:</b> Rua Itaúna, nº 73 – Vila Maria – São Paulo/SP', styles['TermoTexto']))
+        story.append(Spacer(1, 10))
+
+        # Termos
+        termos = [
+            ('1. ESPECIFICAÇÕES DO PEDIDO', 'O cliente confirma estar ciente das medidas, modelos, gramaturas, cores, quantidades e acabamentos conforme tabela padrão enviada.'),
+            ('2. MATERIAL – INFORMAÇÕES TÉCNICAS', 'TNT produzido com material virgem, 100% reciclável, polipropileno (PP). Podem ocorrer variações naturais de textura, tonalidade e densidade entre lotes.'),
+            ('3. VARIAÇÃO DE TONALIDADE', 'Pode haver variação de até 10%, considerada normal, não caracterizando defeito. Cor validada por imagem ou amostra enviada.'),
+            ('4. APROVAÇÃO DE ARTE E IMPRESSÃO', 'Produção inicia somente após aprovação formal da arte. Alterações pós-aprovação podem gerar custos adicionais e novo prazo.'),
+            ('5. PAGAMENTO', 'Pedido confirmado mediante 50% de sinal, não reembolsável. Saldo pago após produção, incluindo variações. Liberação da mercadoria somente após quitação total.'),
+            ('6. VARIAÇÃO DE QUANTIDADE PRODUZIDA', 'Variação de até 10% para mais ou menos em medidas especiais ou fora do padrão. Pedido mínimo para medidas especiais: 1.000 unidades. Valor final calculado conforme quantidade produzida.'),
+            ('7. PRAZOS DE PRODUÇÃO', 'Contados após aprovação da arte e pagamento do sinal. Atrasos podem ocorrer por força maior: clima, insumos, greve, logística, pandemias, energia, etc.'),
+            ('8. GARANTIA – DEFEITOS DE FABRICAÇÃO', 'Defeitos devem ser comunicados em até 7 dias após recebimento. Direito a reembolso proporcional ou crédito equivalente às unidades defeituosas. Devolução obrigatória com nota fiscal. Garantia não cobre mau uso, excesso de peso, armazenamento incorreto, exposição a sol/umidade ou transporte de terceiros.'),
+            ('9. DESISTÊNCIA', 'Após início de produção, insumos ou impressão, o sinal é perdido e pagamento proporcional ao produzido é devido.'),
+            ('10. USO DE MARCA E DIVULGAÇÃO', 'Cliente autoriza uso de imagens/vídeos para divulgação, portfólio e demonstrações comerciais. Responsabilidade sobre marcas de terceiros é exclusiva do cliente.'),
+            ('11. DECLARAÇÃO FINAL', 'Ao confirmar o pedido, o cliente declara ter lido, entendido e concordado com todas as cláusulas, autorizando a produção.'),
+            ('12. CONDIÇÕES COMERCIAIS E POLÍTICA DE PAGAMENTO', 'Orçamento válido apenas na data da emissão. Pagamento antecipado via PIX ou depósito bancário conforme dados fornecidos. Depósitos devem ser do mesmo titular, identificados, não aceitamos cheques ou depósitos de terceiros. Estornos realizados em até 72h úteis, sujeito a TED entre bancos.'),
+        ]
+
+        for titulo, texto in termos:
+            story.append(Paragraph(f'<b>{titulo}</b>', styles['TermoTitulo']))
+            story.append(Paragraph(texto, styles['TermoTexto']))
+
+        doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
         buffer.seek(0)
 
-        filename = f"calculo-lote-precos-{agora.strftime('%Y-%m-%d')}.pdf"
+        filename = f"FiberTNT-Cotacao-Comercial-{agora.strftime('%d-%m-%Y')}.pdf"
         return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
     except Exception as e:
         return jsonify({'error': f'Erro ao gerar PDF: {str(e)}'}), 500
