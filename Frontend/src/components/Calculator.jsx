@@ -55,6 +55,10 @@ export default function Calculator({ onOpenBatch }) {
   const [authed, setAuthed] = useState(false);
   const [showEtapas, setShowEtapas] = useState(false);
   const [showAproveitamento, setShowAproveitamento] = useState(false);
+  // Modal de senha
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   // Quando um resultado novo chega, avisa por alert se a altura efetiva por unidade exceder a bobina
   useEffect(() => {
@@ -90,18 +94,31 @@ export default function Calculator({ onOpenBatch }) {
     } catch {}
   }, []);
 
+  const APP_PASSWORD = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_PASSWORD) || 'admin';
+
   const desbloquearEtapas = () => {
     if (authed) { setShowEtapas(true); return; }
-    const pwd = window.prompt('Digite a senha para ver as etapas detalhadas:');
-    if (pwd === null) return;
-    const APPROVAL_PWD = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APPROVAL_PASSWORD) || 'admin';
-    if (pwd === APPROVAL_PWD) {
+    setPasswordInput('');
+    setPasswordError('');
+    setShowPasswordModal(true);
+  };
+
+  const handleConfirmPassword = () => {
+    if (passwordInput === APP_PASSWORD) {
       setAuthed(true);
       setShowEtapas(true);
       try { sessionStorage.setItem('auth_ok', '1'); } catch {}
+      setShowPasswordModal(false);
+      setPasswordError('');
     } else {
-      window.alert('Senha incorreta.');
+      setPasswordError('Senha incorreta.');
     }
+  };
+
+  const handleClosePasswordModal = () => {
+    setShowPasswordModal(false);
+    setPasswordError('');
+    setPasswordInput('');
   };
 
   // Carrega gramaturas e estados
@@ -755,6 +772,34 @@ export default function Calculator({ onOpenBatch }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal de senha */}
+      {showPasswordModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Protegido por senha">
+          <div className="modal">
+            <h3>Área protegida</h3>
+            <p>Informe a senha para ver as etapas detalhadas.</p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Senha"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleConfirmPassword();
+                }
+              }}
+              autoFocus
+            />
+            {passwordError && <span className="modal-error">{passwordError}</span>}
+            <div className="modal-actions">
+              <button className="ghost" onClick={handleClosePasswordModal}>Cancelar</button>
+              <button className="primary" onClick={handleConfirmPassword}>Entrar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
