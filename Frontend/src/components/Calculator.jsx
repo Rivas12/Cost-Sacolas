@@ -633,7 +633,9 @@ export default function Calculator({ onOpenBatch }) {
                     .filter((imp) => Number(imp.percentual || 0) > 0.0001)
                     .map((imp, idx) => {
                       const pct = Number(imp.percentual || 0);
-                      const val = resultado.preco_final_produto * (pct / 100);
+                      // Base de cálculo: preço do produto COM IPI (Preço final produto + IPI)
+                      const baseCalculo = Number(resultado.preco_final_produto_com_ipi || resultado.preco_final_produto || 0);
+                      const val = baseCalculo * (pct / 100);
                       return (
                         <tr key={`imp-${idx}`} style={{fontSize: '0.9em'}}>
                           <td style={{paddingLeft: '40px'}}>• {imp.nome}</td>

@@ -1000,22 +1000,20 @@ def calcular_preco():
     preco_final_produto = preco_final_com_servicos
     preco_final_total = round(preco_final_produto, 2)
     
-    # ==== ETAPA 6: Extrair cada componente como % do preço SEM IPI ====
-    valor_impostos = round(preco_final_produto_sem_ipi * impostos_dec, 2)  # Inclui ICMS
-    valor_custos_operacionais_final = round(preco_final_produto_sem_ipi * outros_dec, 2)
+    # ==== ETAPA 6: Extrair cada componente como % do preço COM IPI (preço final) ====
+    # Margem, Impostos e Comissão são % do preço final (com IPI)
+    valor_margem = round(preco_final_produto_com_ipi * margem_dec, 2)
+    valor_impostos = round(preco_final_produto_com_ipi * impostos_dec, 2)  # Inclui ICMS
+    valor_comissao = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
+    valor_custos_operacionais_final = round(preco_final_produto_com_ipi * outros_dec, 2)
     
     # Extrair ICMS separado para exibição
     icms_dec_calc = icms / 100 if icms > 0 else 0
-    valor_icms = round(preco_final_produto_sem_ipi * icms_dec_calc, 2)
+    valor_icms = round(preco_final_produto_com_ipi * icms_dec_calc, 2)
     
-    # Margem é calculada sobre o preço SEM IPI (já tem a comissão dentro)
-    valor_margem = round(preco_final_produto_sem_ipi * margem_dec, 2)
-    
-    # Comissão é calculada sobre o preço SEM IPI (já está dentro da equação)
-    valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
+    # Detalhamento da comissão
     valor_comissao_produto = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
     valor_comissao_servicos = round((valor_silk_total + valor_servicos_total) * comissao_dec_aplicada, 2)
-    valor_comissao = round(valor_comissao_produto + valor_comissao_servicos, 2)
 
     # ==== ETAPA 7: Preço com desconto (economia) ====
     # Se houver desconto na margem, mostrar o preço sem desconto
@@ -1167,6 +1165,7 @@ def calcular_preco():
         'valor_desconto': round(valor_desconto, 2),
         # ===== PREÇOS FINAIS =====
         'preco_final_produto': round(preco_final_produto, 2),
+        'preco_final_produto_com_ipi': round(preco_final_produto_com_ipi, 2),
         'preco_final_produto_sem_ipi': round(preco_final_produto_sem_ipi, 2),
         'preco_unitario_sem_ipi': round(preco_final_produto_sem_ipi / max(1, quantidade), 4),
         'preco_final_servicos': round(valor_silk_total + valor_servicos_total, 2),
