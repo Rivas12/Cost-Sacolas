@@ -511,7 +511,7 @@ export default function Calculator({ onOpenBatch }) {
           </div>
 
           <div className="result-grid">
-            <div className="result-box"><span>Valor unitário (sem IPI{servicosSelecionados.length > 0 ? ', com serviços' : ''})</span><strong>R$ {(Number(resultado.preco_unitario_sem_ipi || 0) + Number(resultado.valor_servicos_unitario || 0)).toFixed(4)}</strong></div>
+            <div className="result-box"><span>Valor unitário (sem IPI)</span><strong>R$ {Number(resultado.preco_unitario_sem_ipi || 0).toFixed(4)}</strong></div>
             <div className="result-box"><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Valor IPI</span><strong>R$ {Number(resultado.valor_ipi || 0).toFixed(2)}</strong></div>

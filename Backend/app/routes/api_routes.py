@@ -997,8 +997,8 @@ def calcular_preco():
 
     # ==== ETAPA 5: Soma com serviços (silk) ====
     preco_final_com_servicos = round(preco_final_produto_com_ipi + valor_silk_total + valor_servicos_total, 2)
-    preco_final_produto = preco_final_com_servicos
-    preco_final_total = round(preco_final_produto, 2)
+    preco_final_produto = preco_final_produto_com_ipi  # Produto COM IPI, SEM serviços (NF produto)
+    preco_final_total = round(preco_final_com_servicos, 2)  # Valor final completo (produto + IPI + serviços)
     
     # ==== ETAPA 6: Extrair cada componente como % do preço COM IPI (preço final) ====
     # Margem, Impostos e Comissão são % do preço final (com IPI)
@@ -1029,9 +1029,9 @@ def calcular_preco():
         preco_final_produto_com_ipi_sem_desc = round(preco_final_produto_sem_ipi_sem_desc + valor_ipi_sem_desc, 2)
         preco_final_com_servicos_sem_desc = round(preco_final_produto_com_ipi_sem_desc + valor_silk_total + valor_servicos_total, 2)
         preco_final_sem_desconto = preco_final_com_servicos_sem_desc
-        valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2)
+        valor_desconto = round(preco_final_sem_desconto - preco_final_total, 2)
     else:
-        preco_final_sem_desconto = preco_final_produto
+        preco_final_sem_desconto = preco_final_total
         valor_desconto = 0
 
     # ==== Verificação: soma dos componentes deve fechar o preço ====
