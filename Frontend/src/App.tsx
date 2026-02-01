@@ -99,23 +99,21 @@ function App() {
             <div className="modal">
               <h3>Área protegida</h3>
               <p>Informe a senha para acessar {pendingSelection || 'esta área'}.</p>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Senha"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleConfirmPassword();
-                  }
-                }}
-                autoFocus
-              />
+              <form onSubmit={(e) => { e.preventDefault(); handleConfirmPassword(); }}>
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Senha"
+                  autoFocus
+                />
+              </form>
               {error && <span className="modal-error">{error}</span>}
               <div className="modal-actions">
-                <button className="ghost" onClick={handleCloseModal}>Cancelar</button>
-                <button className="primary" onClick={handleConfirmPassword}>Entrar</button>
+                <button type="button" className="ghost" onClick={handleCloseModal}>Cancelar</button>
+                <button type="button" className="primary" onClick={handleConfirmPassword}>Entrar</button>
               </div>
             </div>
           </div>

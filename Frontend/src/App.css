@@ -66,6 +66,16 @@ body { display: block; overflow-x: hidden; }
   outline: none;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
   box-sizing: border-box;
+  background-color: #fff;
+  color: #1d1d1f;
+}
+
+.modal input:-webkit-autofill,
+.modal input:-webkit-autofill:hover,
+.modal input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset, inset 0 1px 2px rgba(0,0,0,0.05);
+  -webkit-text-fill-color: #1d1d1f;
+  background-color: #fff !important;
 }
 
 .modal input:focus {

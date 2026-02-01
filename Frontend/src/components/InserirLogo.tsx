@@ -385,24 +385,24 @@ export default function InserirLogo() {
         )}
 
         <div className="control-group">
-          <label className="input-label">Pasta no Supabase</label>
+          <label className="input-label">Categoria de modelos</label>
           <select
             value={selectedFolder}
             onChange={(e) => setSelectedFolder(e.target.value)}
             disabled={loadingFolders || !folderOptions.length}
           >
-            {!selectedFolder && <option value="">Selecione uma pasta</option>}
+            {!selectedFolder && <option value="">Selecione uma categoria</option>}
             {folderOptions.map((folder) => (
               <option key={folder} value={folder}>
                 {folder}
               </option>
             ))}
           </select>
-          <small className="muted">Escolha a pasta (opinião); em seguida selecione a base para carregar no canvas.</small>
+          <small className="muted">Escolha a categoria e depois selecione o modelo de sacola desejado.</small>
         </div>
 
         <div className="control-group">
-          <label className="input-label">Base do canvas (Supabase)</label>
+          <label className="input-label">Modelo de sacola</label>
           <div className="base-gallery">
             {baseChoices.filter((b) => Boolean(b.url)).map((b) => {
               const src = b.url as string;
