@@ -511,10 +511,10 @@ export default function Calculator({ onOpenBatch }) {
           </div>
 
           <div className="result-grid">
-            <div className="result-box"><span>Valor unitário (sem IPI{servicosSelecionados.length > 0 ? ', com serviços' : ''})</span><strong>R$ {((resultado.preco_final_produto + Number(resultado.preco_final_servicos || 0)) / (resultado.quantidade )).toFixed(4)}</strong></div>
+            <div className="result-box"><span>Valor unitário (sem IPI{servicosSelecionados.length > 0 ? ', com serviços' : ''})</span><strong>R$ {(Number(resultado.preco_unitario_sem_ipi || 0) + Number(resultado.valor_servicos_unitario || 0)).toFixed(4)}</strong></div>
             <div className="result-box"><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
-            <div className="result-box"><span>Valor IPI</span><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></div>
+            <div className="result-box"><span>Valor IPI</span><strong>R$ {Number(resultado.valor_ipi || 0).toFixed(2)}</strong></div>
           </div>
 
           {/* Bloco público mostrando aproveitamento da altura (visível sem desbloquear etapas) */}
@@ -620,17 +620,12 @@ export default function Calculator({ onOpenBatch }) {
                     <td className="num"><strong>R$ {resultado.valor_margem.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td><strong>2. Comissão (% por dentro)</strong></td>
-                    <td className="num"><strong>{resultado.comissao_percentual.toFixed(2)}%</strong></td>
-                    <td className="num"><strong>R$ {resultado.valor_comissao.toFixed(2)}</strong></td>
-                  </tr>
-                  <tr>
-                    <td><strong>3. IPI</strong></td>
+                    <td><strong>2. IPI</strong></td>
                     <td className="num"><strong>{resultado.ipi_percentual.toFixed(2)}%</strong></td>
                     <td className="num"><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></td>
                   </tr>
                   <tr>
-                    <td><strong>4. Impostos s/ Receita</strong></td>
+                    <td><strong>3. Impostos s/ Receita</strong></td>
                     <td className="num"><strong>{resultado.impostos_fixos_percentual.toFixed(2)}%</strong></td>
                     <td className="num"><strong>R$ {resultado.valor_impostos_fixos.toFixed(2)}</strong></td>
                   </tr>
@@ -647,20 +642,6 @@ export default function Calculator({ onOpenBatch }) {
                         </tr>
                       );
                     })}
-                  {(Number(resultado.icms_percentual || 0) > 0.0001) && (
-                    <>
-                      <tr>
-                        <td><strong>5. ICMS</strong></td>
-                        <td className="num"><strong>{resultado.icms_percentual.toFixed(2)}%</strong></td>
-                        <td className="num"><strong>R$ {resultado.valor_icms.toFixed(2)}</strong></td>
-                      </tr>
-                      <tr style={{fontSize: '0.9em'}}>
-                        <td style={{paddingLeft: '40px'}}>• Origem: {resultado.icms_origem}</td>
-                        <td className="num">—</td>
-                        <td className="num">—</td>
-                      </tr>
-                    </>
-                  )}
                   {(Number(resultado.desconto_percentual || 0) > 0.0001) && (
                     <tr>
                       <td><strong>Desconto</strong></td>
@@ -668,6 +649,21 @@ export default function Calculator({ onOpenBatch }) {
                       <td className="num"><strong>-R$ {resultado.valor_desconto.toFixed(2)}</strong></td>
                     </tr>
                   )}
+                  <tr>
+                    <td><strong>4. Comissão ({resultado.comissao_percentual.toFixed(2)}% do total)</strong></td>
+                    <td className="num"><strong>{resultado.comissao_percentual.toFixed(2)}%</strong></td>
+                    <td className="num"><strong>R$ {resultado.valor_comissao.toFixed(2)}</strong></td>
+                  </tr>
+                  <tr style={{fontSize: '0.9em'}}>
+                    <td style={{paddingLeft: '40px'}}>• Produto: R$ {Number(resultado.valor_comissao_produto || 0).toFixed(2)}</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                  </tr>
+                  <tr style={{fontSize: '0.9em'}}>
+                    <td style={{paddingLeft: '40px'}}>• Serviços: R$ {Number(resultado.valor_comissao_servicos || 0).toFixed(2)}</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                  </tr>
                   <tr style={{borderTop: '1px solid #e5e7eb'}}>
                     <td><strong>= Custo Base</strong></td>
                     <td className="num">—</td>
@@ -694,9 +690,9 @@ export default function Calculator({ onOpenBatch }) {
                     <td className="num">R$ {resultado.custo_material_total.toFixed(2)}</td>
                   </tr>
                   <tr style={{fontSize: '0.9em'}}>
-                    <td style={{paddingLeft: '40px'}}>• Perdas ({resultado.perdas_calibracao_un} un)</td>
-                    <td className="num">R$ {resultado.custo_real.toFixed(2)}</td>
-                    <td className="num">R$ {(resultado.perdas_calibracao_un * resultado.custo_real).toFixed(2)}</td>
+                    <td style={{paddingLeft: '40px'}}>• Perdas ({resultado.perdas_calibracao_un} m)</td>
+                    <td className="num">—</td>
+                    <td className="num">R$ {Number(resultado.perdas_calibracao_valor || 0).toFixed(2)}</td>
                   </tr>
                   <tr>
                     <td>Custos operacionais ({resultado.custo_operacional_percentual}%)</td>
@@ -705,8 +701,6 @@ export default function Calculator({ onOpenBatch }) {
                   </tr>
                 </tbody>
               </table>
-
-
               {(resultado.servicos_detalhe && resultado.servicos_detalhe.length > 0) ? (
                 <table className="result-table" style={{ marginTop: 12 }}>
                   <thead>

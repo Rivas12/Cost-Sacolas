@@ -922,10 +922,15 @@ def calcular_preco():
     # Buscar impostos fixos
     resp_impostos = client.table('impostos').select('nome, valor').execute()
     impostos_fixos_raw = resp_impostos.data or []
-    # Filtra ICMS da lista de impostos fixos para evitar duplicidade (ICMS do produto já é calculado separado)
+    # Filtra ICMS da lista de impostos fixos para evitar duplicidade (ICMS será adicionado separadamente)
     impostos_fixos = [imp for imp in impostos_fixos_raw if (imp.get('nome') or '').strip().upper() != 'ICMS']
     total_impostos_fixos = sum([float(imp.get('valor') or 0) for imp in impostos_fixos])
+    
+    # Adicionar ICMS aos impostos fixos (tratado como imposto s/ receita)
+    # Comissão é calculada depois como 1% do total da NF
+    total_impostos_fixos += icms
     impostos_detalhe = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
+    impostos_detalhe.append({'nome': 'ICMS', 'percentual': icms, 'origem': icms_origem})
 
     # ===== NOVA LÓGICA DE CÁLCULO (TOP-DOWN) =====
     # A margem, impostos, comissão, IPI e ICMS são EXTRAÍDOS do preço final (% por dentro)
@@ -943,19 +948,20 @@ def calcular_preco():
     custo_material_unit = custo_un * (largura_used / 100)
     custo_real = round(custo_material_unit, 2)
 
-    # Quantidade total considerada inclui perdas de calibração
-    quantidade_total = max(0, quantidade + max(0, perdas_calibracao_un))
-
     # Custo total do produto (sem silk)
-    custo_total = round(custo_real * quantidade_total, 2)
+    custo_total = round(custo_real * quantidade, 2)
+    
+    # Perdas de calibração: custo fixo por metro (não por unidade)
+    # perdas_calibracao_un é interpretado como metros de perda
+    perdas_calibracao_valor = round(perdas_calibracao_un * custo_un, 2)
 
     # Total de silk e serviços (por unidade x quantidade, sem perdas)
     valor_silk_total = round((valor_silk_unit or 0) * quantidade, 2)
     valor_servicos_total = round((valor_servicos_unit or 0) * quantidade, 2)
 
-    # ==== ETAPA 1: Custo Base = Material + Custos Operacionais ====
+    # ==== ETAPA 1: Custo Base = Material + Perdas + Custos Operacionais ====
     valor_custos_operacionais = round(custo_total * (outros_custos / 100) if outros_custos > 0 else 0, 2)
-    custo_base = round(custo_total + valor_custos_operacionais, 2)
+    custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais, 2)
 
     # ==== ETAPA 2: Aplicar desconto na margem (se houver) ====
     margem_aplicada = margem
@@ -965,60 +971,78 @@ def calcular_preco():
         except Exception:
             margem_aplicada = max(0.0, float(margem))
 
-    # ==== ETAPA 3: Resolver equação para Preço Final ====
+    # ==== ETAPA 3: Resolver equação para Preço Final (SEM IPI e SEM COMISSÃO) ====
     # Todos os percentuais são "por dentro" (extraídos do preço final)
     # Percentuais em formato decimal
     margem_dec = margem_aplicada / 100 if margem_aplicada > 0 else 0
-    comissao_dec = comissao / 100 if comissao > 0 else 0
-    impostos_dec = total_impostos_fixos / 100 if total_impostos_fixos > 0 else 0
-    icms_dec = icms / 100 if icms > 0 else 0
-    ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
+    impostos_dec = total_impostos_fixos / 100 if total_impostos_fixos > 0 else 0  # Inclui ICMS
     outros_dec = outros_custos / 100 if outros_custos > 0 else 0
 
-    # Soma de todos os percentuais
-    soma_percentuais = margem_dec + comissao_dec + impostos_dec + icms_dec + ipi_dec + outros_dec
+    # Soma de todos os percentuais (SEM IPI e SEM COMISSÃO - ambos calculados depois)
+    soma_percentuais = margem_dec + impostos_dec + outros_dec
 
     # Garantir que a soma não atinja ou ultrapasse 100%
     if soma_percentuais >= 1.0:
         soma_percentuais = 0.99  # Máximo de 99%
 
-    # Preço Final resolvendo: P = C / (1 - Σ%)
+    # Preço Final SEM IPI e SEM COMISSÃO resolvendo: P = C / (1 - Σ%)
     denom = max(1e-9, (1 - soma_percentuais))
-    preco_final_produto = round(custo_base / denom, 2)
+    preco_final_produto_sem_ipi_e_comissao = round(custo_base / denom, 2)
 
-    # ==== ETAPA 4: Extrair cada componente como % do preço final ====
-    valor_margem = round(preco_final_produto * margem_dec, 2)
-    valor_comissao = round(preco_final_produto * comissao_dec, 2)
-    valor_impostos = round(preco_final_produto * impostos_dec, 2)
-    valor_icms = round(preco_final_produto * icms_dec, 2)
-    valor_ipi = round(preco_final_produto * ipi_dec, 2) if ipi_dec > 0 else 0
-    valor_custos_operacionais_final = round(preco_final_produto * outros_dec, 2)
+    # ==== ETAPA 4: Aplicar IPI por fora (após margem e impostos) ====
+    ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
+    valor_ipi = round(preco_final_produto_sem_ipi_e_comissao * ipi_dec, 2) if ipi_dec > 0 else 0
+    preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi_e_comissao + valor_ipi, 2)
 
-    # ==== ETAPA 5: Preço com desconto (economia) ====
+    # ==== ETAPA 5: Soma com serviços (silk) ====
+    preco_final_com_servicos = round(preco_final_produto_com_ipi + valor_silk_total + valor_servicos_total, 2)
+    preco_final_produto = preco_final_com_servicos
+    preco_final_total = round(preco_final_produto, 2)
+    
+    # ==== ETAPA 6: Extrair cada componente como % do preço SEM IPI/COMISSÃO ====
+    valor_impostos = round(preco_final_produto_sem_ipi_e_comissao * impostos_dec, 2)  # Inclui ICMS
+    valor_custos_operacionais_final = round(preco_final_produto_sem_ipi_e_comissao * outros_dec, 2)
+    
+    # Extrair ICMS separado para exibição
+    icms_dec_calc = icms / 100 if icms > 0 else 0
+    valor_icms = round(preco_final_produto_sem_ipi_e_comissao * icms_dec_calc, 2)
+    
+    # Margem é calculada sobre o preço FINAL (com IPI e serviços)
+    valor_margem = round(preco_final_com_servicos * margem_dec, 2)
+    
+    # Comissão = % do input de comissão do produto (com IPI) + serviços
+    comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
+    valor_comissao_produto = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
+    valor_comissao_servicos = round((valor_silk_total + valor_servicos_total) * comissao_dec_aplicada, 2)
+    valor_comissao = round(valor_comissao_produto + valor_comissao_servicos, 2)
+
+    # ==== ETAPA 7: Preço com desconto (economia) ====
     # Se houver desconto na margem, mostrar o preço sem desconto
     if incluir_desconto and desconto_percentual > 0:
         margem_sem_desc = margem
         margem_sem_desc_dec = margem_sem_desc / 100 if margem_sem_desc > 0 else 0
-        soma_percentuais_sem_desc = margem_sem_desc_dec + comissao_dec + impostos_dec + icms_dec + ipi_dec + outros_dec
+        soma_percentuais_sem_desc = margem_sem_desc_dec + impostos_dec + outros_dec
         if soma_percentuais_sem_desc >= 1.0:
             soma_percentuais_sem_desc = 0.99
         denom_sem_desc = max(1e-9, (1 - soma_percentuais_sem_desc))
-        preco_final_sem_desconto = round(custo_base / denom_sem_desc, 2)
+        preco_final_produto_sem_ipi_e_comissao_sem_desc = round(custo_base / denom_sem_desc, 2)
+        valor_ipi_sem_desc = round(preco_final_produto_sem_ipi_e_comissao_sem_desc * ipi_dec, 2) if ipi_dec > 0 else 0
+        preco_final_produto_com_ipi_sem_desc = round(preco_final_produto_sem_ipi_e_comissao_sem_desc + valor_ipi_sem_desc, 2)
+        preco_final_com_servicos_sem_desc = round(preco_final_produto_com_ipi_sem_desc + valor_silk_total + valor_servicos_total, 2)
+        preco_final_sem_desconto = preco_final_com_servicos_sem_desc
         valor_desconto = round(preco_final_sem_desconto - preco_final_produto, 2)
     else:
         preco_final_sem_desconto = preco_final_produto
         valor_desconto = 0
 
-    # ==== ETAPA 6: Soma com serviços (silk) ====
+    # ==== ETAPA 7: Soma com serviços (silk) ====
     preco_final_total = round(preco_final_produto + valor_silk_total + valor_servicos_total, 2)
 
     # ==== Verificação: soma dos componentes deve fechar o preço ====
     check = round(
         custo_base + 
         valor_margem + 
-        valor_comissao + 
         valor_impostos + 
-        valor_icms + 
         valor_ipi + 
         valor_custos_operacionais_final, 
         2
@@ -1104,9 +1128,10 @@ def calcular_preco():
         'altura_produto_cm': altura_produto,
         'quantidade': quantidade,
         'perdas_calibracao_un': perdas_calibracao_un,
-        'quantidade_total': quantidade_total,
+        'perdas_calibracao_valor': round(perdas_calibracao_valor, 2),
         
         # ===== BASE DE DADOS (CUSTO) =====
+        'custo_unitario_metro': round(custo_un, 2),
         'custo_un': round((custo_total / max(1, quantidade)), 2),
         'custo_real': round(custo_real, 2),
         'custo_material_total': round(custo_total, 2),
@@ -1121,6 +1146,14 @@ def calcular_preco():
         'comissao_percentual': round(comissao, 2),
         'valor_comissao': round(valor_comissao, 2),
         
+        'comissao_percentual': round(comissao, 2),
+        'valor_comissao': round(valor_comissao, 2),
+        'valor_comissao_produto': round(valor_comissao_produto, 2),
+        'valor_comissao_servicos': round(valor_comissao_servicos, 2),
+        
+        'ipi_percentual': round(ipi_percentual, 2),
+        'valor_ipi': round(valor_ipi, 2),
+        
         'impostos_fixos_percentual': round(total_impostos_fixos, 2),
         'impostos_fixos_detalhe': impostos_detalhe,
         'valor_impostos_fixos': round(valor_impostos, 2),
@@ -1129,17 +1162,14 @@ def calcular_preco():
         'icms_origem': icms_origem,
         'valor_icms': round(valor_icms, 2),
         
-        # ===== IPI =====
-        'ipi_percentual': round(ipi_percentual, 2),
-        'valor_ipi': round(valor_ipi, 2),
-        
         # ===== DESCONTO =====
         'incluir_desconto': incluir_desconto,
         'desconto_percentual': round(desconto_percentual, 2),
         'valor_desconto': round(valor_desconto, 2),
-        
         # ===== PREÇOS FINAIS =====
         'preco_final_produto': round(preco_final_produto, 2),
+        'preco_final_produto_sem_ipi': round(preco_final_produto_sem_ipi_e_comissao, 2),
+        'preco_unitario_sem_ipi': round(preco_final_produto_sem_ipi_e_comissao / max(1, quantidade), 4),
         'preco_final_servicos': round(valor_silk_total + valor_servicos_total, 2),
         'preco_final': round(preco_final_total, 2),
         'preco_final_sem_desconto': round(preco_final_sem_desconto, 2),
