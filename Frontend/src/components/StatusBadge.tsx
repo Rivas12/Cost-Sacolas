@@ -30,11 +30,20 @@ export default function StatusBadge() {
       const json: StatusPayload = await res.json();
       setData(json);
       if (!res.ok || json.status !== 'ok') {
-        setError(json?.supabase?.error || 'API em estado degradado');
+        console.group('%c⚠️ API Status Degradado', 'color: orange; font-weight: bold');
+        console.log('Status:', json.status);
+        console.log('Supabase OK:', json.supabase?.ok);
+        if (json.supabase?.error) console.error('Erro Supabase:', json.supabase.error);
+        console.log('Latência:', json.latency_ms, 'ms');
+        console.log('Timestamp:', json.timestamp);
+        console.groupEnd();
       }
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      setError('Não foi possível conectar à API');
+      console.group('%c❌ Erro de Conexão API', 'color: red; font-weight: bold');
+      console.error('Erro:', err);
+      console.log('Não foi possível conectar à API');
+      console.groupEnd();
       setData(null);
     } finally {
       setLoading(false);
@@ -90,8 +99,6 @@ export default function StatusBadge() {
             <span className="value">{supabaseOk ? 'Conectado' : 'Indisponível'}</span>
             <span className="meta">{supabaseLabel}</span>
           </div>
-
-          {error && <div className="status-error">{error}</div>}
 
           <div className="status-footer">
             <span className="timestamp">{lastUpdated ? `Atualizado às ${lastUpdated}` : 'Aguardando checagem'}</span>

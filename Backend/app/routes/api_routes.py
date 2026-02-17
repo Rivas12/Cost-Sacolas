@@ -26,14 +26,62 @@ try:
 except Exception:
     _CAFILE = None
 
-# Alíquotas de ICMS interestadual reduzido (DIFAL) — para clientes COM IE em operações interestaduais
-# Estes são os valores guardados na gramatura quando cliente tem inscrição estadual
+# Alíquotas de ICMS interestadual (DIFAL) — para clientes COM IE em operações interestaduais
+# Regras de alíquota interestadual:
+# - 12%: Origem Sul/Sudeste (exceto ES) → Destino Sul/Sudeste (exceto ES)
+# - 7%: Origem Sul/Sudeste (exceto ES) → Destino Norte/Nordeste/Centro-Oeste/ES
+# - 12%: Origem Norte/Nordeste/Centro-Oeste/ES → Qualquer destino
+
+# Estados do Sul/Sudeste (exceto ES)
+ESTADOS_SUL_SUDESTE = {'SP', 'RJ', 'MG', 'PR', 'SC', 'RS'}
+
+# Estados do Norte/Nordeste/Centro-Oeste + ES
+ESTADOS_NORTE_NE_CO_ES = {
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+    'MT', 'MS', 'PA', 'PB', 'PE', 'PI', 'RN', 'RO', 'RR', 'SE', 'TO'
+}
+
+def get_icms_interestadual(estado_origem: str, estado_destino: str) -> float:
+    """
+    Calcula a alíquota de ICMS interestadual correta baseada nas regras fiscais brasileiras.
+    
+    Regras:
+    - 12%: Sul/Sudeste (exceto ES) → Sul/Sudeste (exceto ES)
+    - 7%: Sul/Sudeste (exceto ES) → Norte/Nordeste/Centro-Oeste ou ES
+    - 12%: Norte/Nordeste/Centro-Oeste ou ES → Qualquer outro estado
+    
+    Args:
+        estado_origem: Sigla do estado de origem (ex: 'SP')
+        estado_destino: Sigla do estado de destino (ex: 'BA')
+    
+    Returns:
+        Alíquota de ICMS interestadual (7.0 ou 12.0)
+    """
+    origem = (estado_origem or '').upper().strip()
+    destino = (estado_destino or '').upper().strip()
+    
+    if not origem or not destino:
+        return 0.0
+    
+    # Se origem é Sul/Sudeste (exceto ES)
+    if origem in ESTADOS_SUL_SUDESTE:
+        # Destino também é Sul/Sudeste (exceto ES) → 12%
+        if destino in ESTADOS_SUL_SUDESTE:
+            return 12.0
+        # Destino é Norte/Nordeste/Centro-Oeste ou ES → 7%
+        else:
+            return 7.0
+    # Se origem é Norte/Nordeste/Centro-Oeste ou ES → sempre 12%
+    else:
+        return 12.0
+
+# Dicionário legado mantido para compatibilidade (usado como fallback)
 ICMS_ESTADO_PADRAO = {
     "AC": 7.0, "AL": 7.0, "AM": 7.0, "AP": 7.0, "BA": 7.0,
     "CE": 7.0, "DF": 7.0, "ES": 7.0, "GO": 7.0, "MA": 7.0,
-    "MT": 7.0, "MS": 7.0, "MG": 7.0, "PA": 7.0, "PB": 7.0,
-    "PR": 7.0, "PE": 7.0, "PI": 7.0, "RJ": 7.0, "RN": 7.0,
-    "RS": 7.0, "RO": 7.0, "RR": 7.0, "SC": 7.0, "SP": 7.0,
+    "MT": 7.0, "MS": 7.0, "MG": 12.0, "PA": 7.0, "PB": 7.0,
+    "PR": 12.0, "PE": 7.0, "PI": 7.0, "RJ": 12.0, "RN": 7.0,
+    "RS": 12.0, "RO": 7.0, "RR": 7.0, "SC": 12.0, "SP": 12.0,
     "SE": 7.0, "TO": 7.0,
 }
 
@@ -604,7 +652,6 @@ def get_gramaturas():
             'gramatura': g.gramatura,
             'preco': g.preco,
             'altura_cm': g.altura_cm,
-            'icms_estadual': g.icms_estadual,
         }
         for g in gramaturas
     ])
@@ -803,12 +850,7 @@ def add_gramatura():
     gram = data.get('gramatura')
     preco = data.get('preco')
     altura = data.get('altura_cm')
-    icms_estadual = data.get('icms_estadual')
-    try:
-        icms_estadual = float(icms_estadual) if icms_estadual not in (None, '') else None
-    except Exception:
-        icms_estadual = None
-    Gramatura.add(gram, preco, altura, icms_estadual)
+    Gramatura.add(gram, preco, altura)
     return jsonify({'message': 'Gramatura adicionada!'}), 201
 
 # Editar gramatura
@@ -822,11 +864,6 @@ def edit_gramatura(id):
     }
     if 'altura_cm' in data:
         updates['altura_cm'] = data.get('altura_cm')
-    if 'icms_estadual' in data:
-        try:
-            updates['icms_estadual'] = float(data.get('icms_estadual')) if data.get('icms_estadual') not in (None, '') else None
-        except Exception:
-            updates['icms_estadual'] = None
     client.table('gramaturas').update(updates).eq('id', id).execute()
     return jsonify({'message': 'Gramatura editada!'})
 
@@ -844,6 +881,9 @@ def calcular_preco():
     gramatura_id = data.get('gramatura_id')
     gramatura_nome = data.get('gramatura_nome')
     largura_cm = float(data.get('largura_cm', 0))
+    # Cortar tecido: flag para indicar que o tecido foi cortado ao meio (largura já vem dividida do front)
+    cortar_tecido = bool(data.get('cortar_tecido', False))
+    largura_original_cm = float(data.get('largura_original_cm', 0)) if cortar_tecido else None
     cfg = get_configuracoes()
     margem = float(data.get('margem', cfg.get('margem', 0)))
     comissao = float(data.get('comissao', 0))
@@ -856,11 +896,6 @@ def calcular_preco():
     incluir_lateral = bool(data.get('incluir_lateral', False))
     incluir_alca = bool(data.get('incluir_alca', False))
     incluir_fundo = bool(data.get('incluir_fundo', False))
-    incluir_desconto = bool(data.get('incluir_desconto', False))
-    try:
-        desconto_percentual = float(data.get('desconto_percentual', 0) or 0) if incluir_desconto else 0.0
-    except Exception:
-        desconto_percentual = 0.0
     # Tamanho da alça (cm) — preferência: payload override, senão configuração (campo salvo: tamanho_alca)
     tamanho_alca_cfg = float(cfg.get('tamanho_alca', 0) or 0)
     try:
@@ -923,12 +958,12 @@ def calcular_preco():
     estado = (data.get('estado') or '').strip().upper() or None
     cliente_tem_ie = bool(data.get('cliente_tem_ie', False))
 
-    # Buscar gramatura (inclui alíquota estadual guardada na gramatura)
+    # Buscar gramatura
     client = get_client()
     if gramatura_id:
-        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm, icms_estadual').eq('id', gramatura_id).limit(1).execute()
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('id', gramatura_id).limit(1).execute()
     elif gramatura_nome:
-        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm, icms_estadual').eq('gramatura', gramatura_nome).limit(1).execute()
+        resp_gram = client.table('gramaturas').select('preco, gramatura, altura_cm').eq('gramatura', gramatura_nome).limit(1).execute()
     else:
         return jsonify({'error': 'Informe gramatura_id ou gramatura_nome'}), 400
     row = resp_gram.data[0] if resp_gram.data else None
@@ -937,15 +972,10 @@ def calcular_preco():
     custo_un = float(row.get('preco') or 0)
     gramatura_nome = row.get('gramatura')
     altura_cm_db = float(row.get('altura_cm')) if row.get('altura_cm') is not None else None
-    icms_estadual_gram = None
-    try:
-        icms_estadual_gram = float(row.get('icms_estadual')) if row.get('icms_estadual') is not None else None
-    except Exception:
-        icms_estadual_gram = None
 
     # Determinar ICMS:
     # - Com IE e MESMO estado (SP): usa alíquota COMPLETA do estado (ex.: 18% em SP)
-    # - Com IE e estado DIFERENTE: usa alíquota REDUZIDA (DIFAL 7%)
+    # - Com IE e estado DIFERENTE: usa alíquota INTERESTADUAL correta (7% ou 12% conforme regras)
     # - Sem IE (consumidor final, pessoa física): usa alíquota COMPLETA do estado conforme ICMS_CONSUMIDOR_FINAL
     ESTADO_EMPRESA = 'SP'  # A empresa opera em SP
     if cliente_tem_ie:
@@ -954,9 +984,10 @@ def calcular_preco():
             icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
             icms_origem = 'icms_completo_mesmo_estado'
         else:
-            # Cliente tem IE mas é de outro estado: operação interestadual, usa alíquota reduzida (DIFAL 7%)
-            icms = float(ICMS_ESTADO_PADRAO.get(estado, 0.0)) if estado else 0.0
-            icms_origem = 'icms_reduzido_ie_outro_estado' if estado else 'icms_zero_sem_estado'
+            # Cliente tem IE mas é de outro estado: operação interestadual
+            # Usa alíquota correta baseada nas regras de origem/destino
+            icms = get_icms_interestadual(ESTADO_EMPRESA, estado) if estado else 0.0
+            icms_origem = 'icms_interestadual_ie_outro_estado' if estado else 'icms_zero_sem_estado'
     else:
         # Cliente SEM IE (consumidor final): usa alíquota completa do estado
         icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
@@ -1017,13 +1048,8 @@ def calcular_preco():
     valor_custos_operacionais = round(custo_total * (outros_custos / 100) if outros_custos > 0 else 0, 2)
     custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais, 2)
 
-    # ==== ETAPA 2: Aplicar desconto na margem (se houver) ====
+    # ==== ETAPA 2: Margem aplicada ====
     margem_aplicada = margem
-    if incluir_desconto:
-        try:
-            margem_aplicada = max(0.0, float(margem) - float(desconto_percentual or 0))
-        except Exception:
-            margem_aplicada = max(0.0, float(margem))
 
     # ==== ETAPA 3: Resolver equação para Preço Final (SEM IPI) ====
     # Todos os percentuais são "por dentro" (extraídos do preço final)
@@ -1068,25 +1094,6 @@ def calcular_preco():
     # Detalhamento da comissão
     valor_comissao_produto = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
     valor_comissao_servicos = round((valor_silk_total + valor_servicos_total) * comissao_dec_aplicada, 2)
-
-    # ==== ETAPA 7: Preço com desconto (economia) ====
-    # Se houver desconto na margem, mostrar o preço sem desconto
-    if incluir_desconto and desconto_percentual > 0:
-        margem_sem_desc = margem
-        margem_sem_desc_dec = margem_sem_desc / 100 if margem_sem_desc > 0 else 0
-        soma_percentuais_sem_desc = margem_sem_desc_dec + impostos_dec + outros_dec + comissao_dec_aplicada
-        if soma_percentuais_sem_desc >= 1.0:
-            soma_percentuais_sem_desc = 0.99
-        denom_sem_desc = max(1e-9, (1 - soma_percentuais_sem_desc))
-        preco_final_produto_sem_ipi_sem_desc = round(custo_base / denom_sem_desc, 2)
-        valor_ipi_sem_desc = round(preco_final_produto_sem_ipi_sem_desc * ipi_dec, 2) if ipi_dec > 0 else 0
-        preco_final_produto_com_ipi_sem_desc = round(preco_final_produto_sem_ipi_sem_desc + valor_ipi_sem_desc, 2)
-        preco_final_com_servicos_sem_desc = round(preco_final_produto_com_ipi_sem_desc + valor_silk_total + valor_servicos_total, 2)
-        preco_final_sem_desconto = preco_final_com_servicos_sem_desc
-        valor_desconto = round(preco_final_sem_desconto - preco_final_total, 2)
-    else:
-        preco_final_sem_desconto = preco_final_total
-        valor_desconto = 0
 
     # ==== Verificação: soma dos componentes deve fechar o preço ====
     check = round(
@@ -1176,6 +1183,8 @@ def calcular_preco():
         'gramatura_nome': gramatura_nome,
         'gramatura_altura_cm': altura_cm_db,
         'largura_cm': largura_cm,
+        'cortar_tecido': cortar_tecido,
+        'largura_original_cm': largura_original_cm,
         'altura_produto_cm': altura_produto,
         'quantidade': quantidade,
         'perdas_calibracao_un': perdas_calibracao_un,
@@ -1213,10 +1222,6 @@ def calcular_preco():
         'icms_origem': icms_origem,
         'valor_icms': round(valor_icms, 2),
         
-        # ===== DESCONTO =====
-        'incluir_desconto': incluir_desconto,
-        'desconto_percentual': round(desconto_percentual, 2),
-        'valor_desconto': round(valor_desconto, 2),
         # ===== PREÇOS FINAIS =====
         'preco_final_produto': round(preco_final_produto, 2),
         'preco_final_produto_com_ipi': round(preco_final_produto_com_ipi, 2),
@@ -1224,7 +1229,6 @@ def calcular_preco():
         'preco_unitario_sem_ipi': round(preco_final_produto_sem_ipi / max(1, quantidade), 4),
         'preco_final_servicos': round(valor_silk_total + valor_servicos_total, 2),
         'preco_final': round(preco_final_total, 2),
-        'preco_final_sem_desconto': round(preco_final_sem_desconto, 2),
         
         # ===== SERVIÇOS (SILK) =====
         'incluir_valor_silk': incluir_valor_silk,

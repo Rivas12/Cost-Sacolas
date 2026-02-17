@@ -34,12 +34,11 @@ export default function Calculator({ onOpenBatch }) {
     cliente_tem_ie: false,
     incluir_valor_silk: false,
     incluir_lateral: false,
-    incluir_desconto: false,
     incluir_alca: true,
     incluir_fundo: false,
+    cortar_tecido: false,
     lateral_cm: '',
     fundo_cm: '',
-    desconto_percentual: '',
   });
 
   // Feedback
@@ -157,11 +156,10 @@ export default function Calculator({ onOpenBatch }) {
     const value = isCheckbox ? e.target.checked : e.target.value;
     setForm((f) => {
       const next = { ...f, [field]: value };
-      // Quando desmarca incluir_lateral, incluir_fundo, incluir_desconto, zera o valor do campo correspondente
+      // Quando desmarca incluir_lateral, incluir_fundo, zera o valor do campo correspondente
       if (isCheckbox && !value) {
         if (field === 'incluir_lateral') next.lateral_cm = '';
         if (field === 'incluir_fundo') next.fundo_cm = '';
-        if (field === 'incluir_desconto') next.desconto_percentual = '';
       }
       return next;
     });
@@ -185,9 +183,14 @@ export default function Calculator({ onOpenBatch }) {
     setResultado(null);
     try {
       const valorSilkNumber = valorSilkServico != null ? Number(valorSilkServico) : parseFloat(settings.valor_silk || 0);
+      // Se cortar_tecido estiver marcado, divide a largura pela metade
+      const larguraOriginal = parseFloat(form.largura_cm);
+      const larguraEnviar = form.cortar_tecido ? larguraOriginal / 2 : larguraOriginal;
       const payload = {
         gramatura_id: form.gramatura_id ? Number(form.gramatura_id) : undefined,
-        largura_cm: parseFloat(form.largura_cm),
+        largura_cm: larguraEnviar,
+        largura_original_cm: form.cortar_tecido ? larguraOriginal : undefined,
+        cortar_tecido: Boolean(form.cortar_tecido),
         altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : undefined,
         margem: parseFloat(settings.margem || '0'),
         comissao: parseFloat(form.comissao || '0'),
@@ -200,8 +203,6 @@ export default function Calculator({ onOpenBatch }) {
         incluir_fundo: Boolean(form.incluir_fundo),
         lateral_cm: form.lateral_cm ? parseFloat(form.lateral_cm) : undefined,
         fundo_cm: form.fundo_cm ? parseFloat(form.fundo_cm) : undefined,
-        incluir_desconto: Boolean(form.incluir_desconto),
-        desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         incluir_valor_silk: false,
         valor_silk: 0,
@@ -283,8 +284,6 @@ export default function Calculator({ onOpenBatch }) {
             imposto_percentual: Number(svc.imposto_percentual || svc.impostos || 0) || 0,
           } : null;
         }).filter(Boolean),
-        incluir_desconto: Boolean(form.incluir_desconto),
-        desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         tamanho_alca: settings.tamanho_alca ? parseFloat(settings.tamanho_alca) : undefined,
       };
@@ -343,8 +342,6 @@ export default function Calculator({ onOpenBatch }) {
           altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : undefined,
           lateral_cm: form.lateral_cm ? parseFloat(form.lateral_cm) : undefined,
           fundo_cm: form.fundo_cm ? parseFloat(form.fundo_cm) : undefined,
-            incluir_desconto: Boolean(form.incluir_desconto),
-            desconto_percentual: form.desconto_percentual ? parseFloat(form.desconto_percentual) : undefined,
         },
       };
       const data = await apiJson(API_PATHS.CALCULAR.replace('/calcular_preco', '/aprovacao/enviar'), {
@@ -391,13 +388,6 @@ export default function Calculator({ onOpenBatch }) {
             <label>Comissão (%)</label>
             <input type="number" step="0.01" min="0" placeholder="0" value={form.comissao} onChange={update('comissao')} />
           </div>
-
-          {form.incluir_desconto && (
-            <div className="calc-field">
-              <label>Desconto (%)</label>
-              <input type="number" step="0.01" min="0" max="100" placeholder="Ex.: 5" value={form.desconto_percentual} onChange={update('desconto_percentual')} />
-            </div>
-          )}
 
           {/* Campos condicionais para Lateral e Fundo (aparecem só se as checkboxes estiverem marcadas) */}
           {form.incluir_lateral && (
@@ -454,9 +444,9 @@ export default function Calculator({ onOpenBatch }) {
               <input type="checkbox" checked={form.incluir_fundo} onChange={update('incluir_fundo')} />
               Incluir fundo
             </label>
-            <label>
-              <input type="checkbox" checked={form.incluir_desconto} onChange={update('incluir_desconto')} />
-              Incluir desconto (%)
+            <label title="Divide a largura do tecido pela metade (tecido cortado ao meio)">
+              <input type="checkbox" checked={form.cortar_tecido} onChange={update('cortar_tecido')} />
+              Cortar tecido
             </label>
           </div>
         </div>
@@ -518,7 +508,12 @@ export default function Calculator({ onOpenBatch }) {
           <div className="result-head">
             <div>
               <h3>Resultado</h3>
-              <p>Gramatura: <strong>{resultado.gramatura_nome}</strong> • Largura: <strong>{resultado.largura_cm} cm</strong></p>
+              <p>
+                Gramatura: <strong>{resultado.gramatura_nome}</strong> • Largura: <strong>{resultado.largura_cm} cm</strong>
+                {resultado.cortar_tecido && (
+                  <span title={`Largura original: ${resultado.largura_original_cm} cm (cortada ao meio)`} style={{marginLeft:8, color:'#0891b2', fontWeight:600}}>✂️ Tecido cortado</span>
+                )}
+              </p>
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
             </div>
             <div className="result-highlight">
