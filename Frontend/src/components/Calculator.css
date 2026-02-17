@@ -181,6 +181,73 @@
 }
 .aprove-toggle .caret.open { transform: rotate(180deg); }
 
+/* Seção de serviços */
+.services-box {
+  margin-top: 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+
+.services-head {
+  margin-bottom: 10px;
+}
+
+.services-head h4 {
+  margin: 0 0 2px 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.services-hint {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.services-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+}
+
+.service-item:hover {
+  border-color: #00bfff;
+  background: #f8fdff;
+}
+
+.service-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #00bfff;
+  cursor: pointer;
+  margin: 0;
+}
+
+.service-item input[type="checkbox"]:checked + .service-name {
+  color: #0284c7;
+  font-weight: 600;
+}
+
+.service-name {
+  color: #374151;
+  font-weight: 500;
+}
+
 /* Responsividade */
 @media (max-width: 1000px) {
   .calc-grid { grid-template-columns: repeat(2, 1fr); }
