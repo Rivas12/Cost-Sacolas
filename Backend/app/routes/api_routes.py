@@ -1080,16 +1080,23 @@ def calcular_preco():
     preco_final_produto = preco_final_produto_com_ipi  # Produto COM IPI, SEM serviços (NF produto)
     preco_final_total = round(preco_final_com_servicos, 2)  # Valor final completo (produto + IPI + serviços)
     
-    # ==== ETAPA 6: Extrair cada componente como % do preço COM IPI (preço final) ====
+    # ==== ETAPA 6: Extrair cada componente como % do preço ====
+    # Se cliente tem IE, o IPI não compõe a base de cálculo do ICMS
+    # Se cliente não tem IE, o IPI entra na base de cálculo do ICMS
+    base_icms = preco_final_produto_sem_ipi if cliente_tem_ie else preco_final_produto_com_ipi
+    
     # Margem, Impostos e Comissão são % do preço final (com IPI)
     valor_margem = round(preco_final_produto_com_ipi * margem_dec, 2)
-    valor_impostos = round(preco_final_produto_com_ipi * impostos_dec, 2)  # Inclui ICMS
+    valor_impostos_sem_icms = round(preco_final_produto_com_ipi * (impostos_dec - (icms / 100 if icms > 0 else 0)), 2)
     valor_comissao = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
     valor_custos_operacionais_final = round(preco_final_produto_com_ipi * outros_dec, 2)
     
-    # Extrair ICMS separado para exibição
+    # Extrair ICMS separado para exibição (usando base correta conforme IE)
     icms_dec_calc = icms / 100 if icms > 0 else 0
-    valor_icms = round(preco_final_produto_com_ipi * icms_dec_calc, 2)
+    valor_icms = round(base_icms * icms_dec_calc, 2)
+    
+    # Total de impostos (ICMS calculado na base correta + demais impostos)
+    valor_impostos = round(valor_impostos_sem_icms + valor_icms, 2)
     
     # Detalhamento da comissão
     valor_comissao_produto = round(preco_final_produto_com_ipi * comissao_dec_aplicada, 2)
@@ -1220,6 +1227,8 @@ def calcular_preco():
         
         'icms_percentual': round(icms, 2),
         'icms_origem': icms_origem,
+        'icms_base': round(base_icms, 2),
+        'icms_inclui_ipi': not cliente_tem_ie,
         'valor_icms': round(valor_icms, 2),
         
         # ===== PREÇOS FINAIS =====

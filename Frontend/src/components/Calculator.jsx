@@ -54,6 +54,7 @@ export default function Calculator({ onOpenBatch }) {
   const [authed, setAuthed] = useState(false);
   const [showEtapas, setShowEtapas] = useState(false);
   const [showAproveitamento, setShowAproveitamento] = useState(false);
+  const [showUnitarioComIpi, setShowUnitarioComIpi] = useState(true);
   // Modal de senha
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -523,7 +524,18 @@ export default function Calculator({ onOpenBatch }) {
           </div>
 
           <div className="result-grid">
-            <div className="result-box"><span>Valor unitário (sem IPI)</span><strong>R$ {Number(resultado.preco_unitario_sem_ipi || 0).toFixed(4)}</strong></div>
+            <div 
+              className="result-box clickable" 
+              onClick={() => setShowUnitarioComIpi(v => !v)} 
+              style={{cursor: 'pointer'}} 
+              title="Clique para alternar entre com/sem IPI"
+            >
+              <span>{showUnitarioComIpi ? 'Valor unitário (com IPI)' : 'Valor unitário (sem IPI)'} 🔄</span>
+              <strong>R$ {showUnitarioComIpi 
+                ? Number((resultado.preco_final_produto_com_ipi || 0) / Math.max(1, resultado.quantidade || 1)).toFixed(4) 
+                : Number(resultado.preco_unitario_sem_ipi || 0).toFixed(4)
+              }</strong>
+            </div>
             <div className="result-box"><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
             <div className="result-box"><span>Valor IPI</span><strong>R$ {Number(resultado.valor_ipi || 0).toFixed(2)}</strong></div>
