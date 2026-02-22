@@ -1012,8 +1012,8 @@ def calcular_preco():
     total_impostos_fixos_sem_icms = sum([float(imp.get('valor') or 0) for imp in impostos_fixos])
     
     # ICMS será calculado separadamente para permitir base diferente (com/sem IPI)
-    impostos_detalhe = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
-    impostos_detalhe.append({'nome': 'ICMS', 'percentual': icms, 'origem': icms_origem})
+    # O detalhe dos impostos será preenchido após o cálculo do preço (para incluir valores em R$)
+    impostos_fixos_lista = [{'nome': imp.get('nome'), 'percentual': float(imp.get('valor') or 0)} for imp in impostos_fixos]
 
     # ===== NOVA LÓGICA DE CÁLCULO (TOP-DOWN) =====
     # A margem, impostos, comissão, IPI e ICMS são EXTRAÍDOS do preço final (% por dentro)
@@ -1121,6 +1121,29 @@ def calcular_preco():
     valor_impostos_sem_icms = round(preco_final_produto_sem_ipi * impostos_sem_icms_dec, 2)
     valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
     valor_custos_operacionais_final = round(preco_final_produto_sem_ipi * outros_dec, 2)
+    
+    # ==== ETAPA 6.1: Calcular valor de cada imposto individualmente ====
+    # Impostos (exceto ICMS): calculados sobre preço SEM IPI (usados na formação)
+    # ICMS: calculado sobre base_icms (COM ou SEM IPI, dependendo se cliente tem IE)
+    impostos_detalhe = []
+    for imp in impostos_fixos_lista:
+        pct = float(imp.get('percentual') or 0)
+        # Impostos fixos (PIS, COFINS, INSS, etc.) são calculados sobre preço SEM IPI
+        valor_imp = round(preco_final_produto_sem_ipi * (pct / 100), 2)
+        impostos_detalhe.append({
+            'nome': imp.get('nome'),
+            'percentual': pct,
+            'valor': valor_imp,
+            'base': 'preco_sem_ipi'
+        })
+    # Adiciona ICMS com sua base específica
+    impostos_detalhe.append({
+        'nome': 'ICMS',
+        'percentual': icms,
+        'valor': valor_icms,
+        'base': 'preco_com_ipi' if not cliente_tem_ie else 'preco_sem_ipi',
+        'origem': icms_origem
+    })
     
     # Total de impostos (ICMS já calculado na base correta + demais impostos)
     valor_impostos = round(valor_impostos_sem_icms + valor_icms, 2)

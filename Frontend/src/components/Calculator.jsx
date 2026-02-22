@@ -524,13 +524,18 @@ export default function Calculator({ onOpenBatch }) {
           </div>
 
           <div className="result-grid">
-            <div 
-              className="result-box clickable" 
-              onClick={() => setShowUnitarioComIpi(v => !v)} 
-              style={{cursor: 'pointer'}} 
-              title="Clique para alternar entre com/sem IPI"
-            >
-              <span>{showUnitarioComIpi ? 'Valor unitário (com IPI)' : 'Valor unitário (sem IPI)'} 🔄</span>
+            <div className="result-box">
+              <span>
+                {showUnitarioComIpi ? 'Valor unitário (com IPI)' : 'Valor unitário (sem IPI)'}
+                <button 
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowUnitarioComIpi(v => !v); }}
+                  className="btn-toggle-ipi"
+                  title="Clique para alternar entre com/sem IPI"
+                >
+                  🔄
+                </button>
+              </span>
               <strong>R$ {showUnitarioComIpi 
                 ? Number((resultado.preco_final_produto_com_ipi || 0) / Math.max(1, resultado.quantidade || 1)).toFixed(4) 
                 : Number(resultado.preco_unitario_sem_ipi || 0).toFixed(4)
@@ -657,9 +662,8 @@ export default function Calculator({ onOpenBatch }) {
                     .filter((imp) => Number(imp.percentual || 0) > 0.0001)
                     .map((imp, idx) => {
                       const pct = Number(imp.percentual || 0);
-                      // Base de cálculo: preço do produto COM IPI (Preço final produto + IPI)
-                      const baseCalculo = Number(resultado.preco_final_produto_com_ipi || resultado.preco_final_produto || 0);
-                      const val = baseCalculo * (pct / 100);
+                      // Usa o valor calculado pela API (se disponível), senão recalcula
+                      const val = imp.valor !== undefined ? Number(imp.valor) : 0;
                       return (
                         <tr key={`imp-${idx}`} style={{fontSize: '0.9em'}}>
                           <td style={{paddingLeft: '40px'}}>• {imp.nome}</td>
