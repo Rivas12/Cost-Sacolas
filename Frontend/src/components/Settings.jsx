@@ -264,15 +264,18 @@ export default function Settings() {
 
           <div className="settings-field">
             <label htmlFor="perdas">Perdas de calibração (mt)</label>
-            <input
-              id="perdas"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={settings.perdas_calibracao_un ?? ''}
-              onChange={(e) => setSettings((s) => ({ ...s, perdas_calibracao_un: e.target.value }))}
-            />
+            <div className="input-suffix">
+              <input
+                id="perdas"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={settings.perdas_calibracao_un ?? ''}
+                onChange={(e) => setSettings((s) => ({ ...s, perdas_calibracao_un: e.target.value }))}
+              />
+              <span className="suffix">mt</span>
+            </div>
             <small>Unidades extras produzidas para calibrar a máquina</small>
           </div>
 
