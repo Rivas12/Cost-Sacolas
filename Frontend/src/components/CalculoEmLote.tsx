@@ -192,13 +192,11 @@ export default function CalculoEmLote(): React.ReactElement {
         <table className="result-table calculo-lote__table">
           <thead>
             <tr>
-              <th style={{ textAlign: 'left' }}>Nome</th>
-              <th style={{ textAlign: 'left' }}>Largura (cm)</th>
-              <th style={{ textAlign: 'left' }}>Altura (cm)</th>
-              <th style={{ textAlign: 'left' }}>Lateral (cm)</th>
-              <th style={{ textAlign: 'left' }}>Fundo (cm)</th>
-              <th style={{ textAlign: 'center' }}>Alça?</th>
-              <th style={{ width: 80, textAlign: 'right' }}>Ações</th>
+              <th style={{ width: '40%', textAlign: 'left' }}>Nome</th>
+              <th style={{ width: '20%', textAlign: 'center' }}>Largura (cm)</th>
+              <th style={{ width: '20%', textAlign: 'center' }}>Altura (cm)</th>
+              <th style={{ width: '10%', textAlign: 'center' }}>Alça?</th>
+              <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -218,6 +216,7 @@ export default function CalculoEmLote(): React.ReactElement {
                     placeholder="Largura"
                     value={it.largura_cm}
                     onChange={(e) => updateEntry(it.id, 'largura_cm', e.target.value)}
+                    style={{ textAlign: 'center' }}
                   />
                 </td>
                 <td>
@@ -227,24 +226,7 @@ export default function CalculoEmLote(): React.ReactElement {
                     placeholder="Altura"
                     value={it.altura_cm}
                     onChange={(e) => updateEntry(it.id, 'altura_cm', e.target.value)}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Lateral"
-                    value={it.lateral_cm ?? ''}
-                    onChange={(e) => updateEntry(it.id, 'lateral_cm', e.target.value)}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Fundo"
-                    value={it.fundo_cm ?? ''}
-                    onChange={(e) => updateEntry(it.id, 'fundo_cm', e.target.value)}
+                    style={{ textAlign: 'center' }}
                   />
                 </td>
                 <td className="checkbox-cell">
@@ -254,8 +236,8 @@ export default function CalculoEmLote(): React.ReactElement {
                     onChange={(e) => updateEntry(it.id, 'incluir_alca', e.target.checked)}
                   />
                 </td>
-                <td>
-                  <div className="table-actions" style={{ justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+                <td style={{ textAlign: 'center' }}>
+                  <div className="table-actions" style={{ justifyContent: 'center', gap: 8, alignItems: 'center' }}>
                     {it.dirty && <span style={{ color: '#f59e0b', fontSize: 12 }}>●</span>}
                     <button
                       className="btn-icon danger"
@@ -289,6 +271,7 @@ export default function CalculoEmLote(): React.ReactElement {
                   value={novo.largura_cm}
                   onChange={(e) => setNovo((n) => ({ ...n, largura_cm: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+                  style={{ textAlign: 'center' }}
                 />
               </td>
               <td>
@@ -299,26 +282,7 @@ export default function CalculoEmLote(): React.ReactElement {
                   value={novo.altura_cm}
                   onChange={(e) => setNovo((n) => ({ ...n, altura_cm: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
-                />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Lateral"
-                  value={novo.lateral_cm}
-                  onChange={(e) => setNovo((n) => ({ ...n, lateral_cm: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
-                />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Fundo (opcional)"
-                  value={novo.fundo_cm}
-                  onChange={(e) => setNovo((n) => ({ ...n, fundo_cm: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+                  style={{ textAlign: 'center' }}
                 />
               </td>
               <td className="checkbox-cell">
@@ -329,7 +293,7 @@ export default function CalculoEmLote(): React.ReactElement {
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
                 />
               </td>
-              <td>
+              <td style={{ textAlign: 'center' }}>
                 <button className="btn-primary small" type="button" onClick={addEntry} disabled={savingId !== null || loading || savingAll}>
                   {savingId === -1 ? 'Salvando...' : 'Adicionar'}
                 </button>
