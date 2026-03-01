@@ -1062,49 +1062,66 @@ def calcular_preco():
     comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
     ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
 
+    # ===== CÁLCULO UNIFICADO =====
+    # IPI é SEMPRE calculado da mesma forma, independente do IE
+    # A diferença do IE afeta apenas a BASE do ICMS:
+    # - COM IE: ICMS sobre base SEM IPI
+    # - SEM IE: ICMS sobre base COM IPI
+    
+    # Percentuais de formação de preço (exceto ICMS - calculado separadamente)
+    # PIS, COFINS, IRPJ, CSLL, INSS são sempre sobre base SEM IPI
+    soma_percentuais_formacao = margem_dec + impostos_sem_icms_dec + outros_dec + comissao_dec_aplicada
+    
     if cliente_tem_ie:
         # Cliente COM IE: ICMS sobre base SEM IPI
-        # Preço sem IPI = Custo / (1 - margem - impostos_sem_icms - icms - outros - comissao)
-        soma_percentuais_sem_ipi = margem_dec + impostos_sem_icms_dec + icms_dec + outros_dec + comissao_dec_aplicada
-        if soma_percentuais_sem_ipi >= 1.0:
-            soma_percentuais_sem_ipi = 0.99
-        denom = max(1e-9, (1 - soma_percentuais_sem_ipi))
-        preco_final_produto_sem_ipi = round(custo_base / denom, 2)
-        
-        # IPI é aplicado por fora, sem afetar o ICMS
-        valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
-        preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
-        
-        # Base do ICMS é o preço SEM IPI
-        base_icms = preco_final_produto_sem_ipi
-        valor_icms = round(base_icms * icms_dec, 2)
-    else:
-        # Cliente SEM IE: ICMS sobre base COM IPI
-        # Primeiro calcula preço sem IPI e sem ICMS (impostos básicos)
-        soma_percentuais_base = margem_dec + impostos_sem_icms_dec + outros_dec + comissao_dec_aplicada
-        if soma_percentuais_base >= 1.0:
-            soma_percentuais_base = 0.99
-        
-        # O ICMS incide sobre (preço_sem_ipi + IPI), então precisamos resolver:
-        # P_com_ipi = P_sem_ipi * (1 + IPI%)
-        # ICMS = P_com_ipi * ICMS%
-        # P_sem_ipi = (Custo + ICMS) / (1 - outros%)
-        # Substituindo: P_sem_ipi = Custo / (1 - outros% - ICMS% * (1 + IPI%))
-        
-        fator_icms_com_ipi = icms_dec * (1 + ipi_dec)
-        soma_total = soma_percentuais_base + fator_icms_com_ipi
+        # ICMS entra na formação do preço normalmente
+        soma_total = soma_percentuais_formacao + icms_dec
         if soma_total >= 1.0:
             soma_total = 0.99
         denom = max(1e-9, (1 - soma_total))
         preco_final_produto_sem_ipi = round(custo_base / denom, 2)
         
+        # IPI é SEMPRE aplicado por fora, sobre o preço sem IPI
+        valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
+        preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
+        
+        # Base do ICMS é o preço SEM IPI (quando tem IE)
+        base_icms = preco_final_produto_sem_ipi
+        valor_icms = round(base_icms * icms_dec, 2)
+        
+        # Base para PIS, COFINS, etc. é o preço sem IPI (igual ao preco_final_produto_sem_ipi)
+        base_impostos_nao_icms = preco_final_produto_sem_ipi
+    else:
+        # Cliente SEM IE: ICMS sobre base COM IPI
+        # Primeiro, calcula o preço base SEM considerar ICMS na formação
+        # Este é o preço "real" sobre o qual PIS, COFINS, etc. incidem
+        if soma_percentuais_formacao >= 1.0:
+            soma_percentuais_formacao = 0.99
+        denom_base = max(1e-9, (1 - soma_percentuais_formacao))
+        preco_base_sem_icms = round(custo_base / denom_base, 2)
+        
+        # O ICMS incide sobre (preço + IPI), então ajustamos o preço para absorver o ICMS
+        # ICMS é "por dentro": P_final = P_base / (1 - ICMS% * (1 + IPI%))
+        fator_icms = icms_dec * (1 + ipi_dec)
+        if fator_icms >= 1.0:
+            fator_icms = 0.99
+        denom_icms = max(1e-9, (1 - fator_icms))
+        
+        # Preço final sem IPI (para NF) - inclui ajuste do ICMS sobre IPI
+        preco_final_produto_sem_ipi = round(preco_base_sem_icms / denom_icms, 2)
+        
         # IPI por fora
         valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
         preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
         
-        # Base do ICMS é o preço COM IPI
+        # Base do ICMS é o preço COM IPI (quando não tem IE)
         base_icms = preco_final_produto_com_ipi
         valor_icms = round(base_icms * icms_dec, 2)
+        
+        # Base para PIS, COFINS, etc. é o preço SEM IPI e SEM o ajuste do ICMS sobre IPI
+        # Isso porque esses impostos incidem sobre o faturamento (preço do produto sem IPI)
+        # e não devem incluir o "custo" do ICMS sobre IPI
+        base_impostos_nao_icms = preco_final_produto_sem_ipi
 
     # Total de impostos para exibição (usado no cálculo de formação)
     total_impostos_fixos = total_impostos_fixos_sem_icms + icms
@@ -1115,21 +1132,21 @@ def calcular_preco():
     preco_final_total = round(preco_final_com_servicos, 2)  # Valor final completo (produto + IPI + serviços)
     
     # ==== ETAPA 6: Extrair cada componente como % do preço ====
-    # Margem, Impostos (exceto ICMS) e Comissão são calculados sobre o preço SEM IPI
-    # pois foram usados na formação desse preço
+    # Margem e Comissão são calculados sobre o preço SEM IPI (preço de venda)
+    # Impostos (exceto ICMS) são calculados sobre base_impostos_nao_icms
     valor_margem = round(preco_final_produto_sem_ipi * margem_dec, 2)
-    valor_impostos_sem_icms = round(preco_final_produto_sem_ipi * impostos_sem_icms_dec, 2)
+    valor_impostos_sem_icms = round(base_impostos_nao_icms * impostos_sem_icms_dec, 2)
     valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
     valor_custos_operacionais_final = round(preco_final_produto_sem_ipi * outros_dec, 2)
     
     # ==== ETAPA 6.1: Calcular valor de cada imposto individualmente ====
-    # Impostos (exceto ICMS): calculados sobre preço SEM IPI (usados na formação)
+    # Impostos (exceto ICMS): calculados sobre base_impostos_nao_icms (preço de venda sem IPI)
     # ICMS: calculado sobre base_icms (COM ou SEM IPI, dependendo se cliente tem IE)
     impostos_detalhe = []
     for imp in impostos_fixos_lista:
         pct = float(imp.get('percentual') or 0)
-        # Impostos fixos (PIS, COFINS, INSS, etc.) são calculados sobre preço SEM IPI
-        valor_imp = round(preco_final_produto_sem_ipi * (pct / 100), 2)
+        # Impostos fixos (PIS, COFINS, INSS, etc.) são calculados sobre o faturamento (preço sem IPI)
+        valor_imp = round(base_impostos_nao_icms * (pct / 100), 2)
         impostos_detalhe.append({
             'nome': imp.get('nome'),
             'percentual': pct,

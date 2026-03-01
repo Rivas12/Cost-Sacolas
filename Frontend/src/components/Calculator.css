@@ -17,6 +17,14 @@
   gap: 20px;
 }
 
+/* Campo de Gramatura mais largo */
+.calc-field.gramatura-field {
+  min-width: 240px;
+}
+.calc-field.gramatura-field select {
+  min-width: 240px;
+}
+
 .calc-field { display: flex; flex-direction: column; gap: 6px; }
 /* Alturas padrão para manter alinhamento entre campos */
 .calc-field { --control-height: 42px; --label-height: 20px; --label-gap: 6px; }
@@ -126,6 +134,7 @@
 }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .result-head h3 { margin: 0 0 2px 0; }
+.result-highlights { display: flex; gap: 6px; }
 .result-highlight { background: linear-gradient(180deg, #e7f8ff, #d7f2ff); padding: 10px 14px; border-radius: 12px; text-align: right; }
 .result-highlight span { color: #25627a; font-size: .9rem; }
 .result-highlight strong { display: block; font-size: 1.3rem; color: #033b4b; }

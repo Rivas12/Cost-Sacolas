@@ -365,7 +365,7 @@ export default function Calculator({ onOpenBatch }) {
 
       <form className="calc-card" onSubmit={handleSubmit}>
         <div className="calc-grid">
-          <div className="calc-field">
+          <div className="calc-field gramatura-field">
             <label>Gramatura</label>
             <select value={form.gramatura_id} onChange={update('gramatura_id')} required>
               <option value="">Selecione</option>
@@ -517,9 +517,15 @@ export default function Calculator({ onOpenBatch }) {
               </p>
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
             </div>
-            <div className="result-highlight">
-              <span>Preço final</span>
-              <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
+            <div className="result-highlights">
+              <div className="result-highlight">
+                <span>Preço unitário final</span>
+                <strong>R$ {(resultado.preco_final / Math.max(1, resultado.quantidade || 1)).toFixed(4)}</strong>
+              </div>
+              <div className="result-highlight">
+                <span>Preço final</span>
+                <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
+              </div>
             </div>
           </div>
 
