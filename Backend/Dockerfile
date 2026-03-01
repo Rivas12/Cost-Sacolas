@@ -3,6 +3,9 @@
 
 FROM python:3.11-slim
 
+# Set timezone to Brazil
+ENV TZ=America/Sao_Paulo
+
 # Prevents Python from writing .pyc files and enables unbuffered logs
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -11,7 +14,8 @@ WORKDIR /app
 
 # Install system deps (add others here if Supabase client ever needs them)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
+    && apt-get install -y --no-install-recommends build-essential tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies
