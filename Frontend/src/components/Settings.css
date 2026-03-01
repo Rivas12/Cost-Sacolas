@@ -50,19 +50,22 @@
 .save-ok { color: #047857; font-weight: 600; margin-right: 12px; }
 
 /* Tabela/impostos - inputs com sufixo */
-.input-suffix { display: flex; align-items: center; gap: 8px; }
-.input-suffix input { width: 140px; text-align: left; }
+.input-suffix { display: flex; align-items: center; gap: 6px; }
+.input-suffix input { flex: 1; min-width: 60px; text-align: right; }
 .suffix {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 32px;
   height: 42px; /* acompanha a altura do input */
-  padding: 0 10px;
+  padding: 0 8px;
   background: #f0f0f0;
   border: 1px solid #e0e0e0;
   border-radius: 10px;
   color: #555;
+  font-size: 0.9rem;
 }
-.table-actions { display: flex; gap: 8px; }
+.table-actions { display: flex; gap: 8px; align-items: center; }
 .btn-ghost.small { padding: 6px 10px; border-radius: 8px; }
 
 /* Inputs da tabela: visual mais polido */
@@ -88,8 +91,9 @@
 }
 .settings-card .result-table input:hover,
 .settings-card .result-table select:hover { background: #fefefe; }
-.settings-card .result-table td:first-child input { width: 100%; min-width: 220px; }
-.settings-card .result-table td:nth-child(2) input { width: 120px; text-align: right; }
+.settings-card .result-table td:first-child input { width: 100%; min-width: 120px; }
+.settings-card .result-table .input-suffix { width: 100%; }
+.settings-card .result-table .input-suffix input { width: 100%; min-width: 50px; }
 
 /* Tabela geral (serviços e impostos) */
 .settings-card .result-table {
@@ -97,17 +101,30 @@
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 12px;
+  table-layout: fixed;
 }
 .settings-card .result-table th,
 .settings-card .result-table td {
   padding: 10px 10px;
   text-align: left;
+  vertical-align: middle;
 }
 .settings-card .result-table th { font-weight: 700; color: #1f2937; letter-spacing: 0.01em; }
-.settings-card .result-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.settings-card .result-table th.num,
+.settings-card .result-table td.num { text-align: left; }
 .settings-card .result-table tbody tr:nth-child(odd) { background: #fafafa; }
 .settings-card .result-table tbody tr:hover { background: #f1f5f9; transition: background .12s ease; }
 .settings-card .result-table tbody td { border-bottom: 1px solid #f0f0f0; }
+
+/* Colunas específicas para serviços */
+.settings-card .result-table th:first-child,
+.settings-card .result-table td:first-child { width: 40%; }
+.settings-card .result-table th:nth-child(2),
+.settings-card .result-table td:nth-child(2) { width: 22%; }
+.settings-card .result-table th:nth-child(3),
+.settings-card .result-table td:nth-child(3) { width: 22%; }
+.settings-card .result-table th:last-child,
+.settings-card .result-table td:last-child { width: 16%; }
 
 /* Linha hover para ajudar a leitura */
 .settings-card .result-table tbody tr:hover { background: #f8fafc; } /* slate-50 */

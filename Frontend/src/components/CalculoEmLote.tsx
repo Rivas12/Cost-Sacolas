@@ -50,7 +50,6 @@ export default function CalculoEmLote(): React.ReactElement {
     try {
       const data = await apiJson('/sacolas_lote');
       setEntries((data || []).map(mapFromApi));
-      setStatus('Dados carregados do Supabase.');
     } catch (e: any) {
       setError(e?.message || 'Não foi possível carregar os itens.');
     } finally {
@@ -68,28 +67,24 @@ export default function CalculoEmLote(): React.ReactElement {
   };
 
   const addEntry = async () => {
-    if (!novo.nome || !novo.largura_cm || !novo.altura_cm) {
-      window.alert('Preencha Nome, Largura e Altura. Os demais campos são opcionais.');
-      return;
-    }
-    const largura = parseFloat(novo.largura_cm);
-    const altura = parseFloat(novo.altura_cm);
-    if (Number.isNaN(largura) || Number.isNaN(altura)) {
-      window.alert('Largura e Altura devem ser números válidos.');
+    if (!novo.nome) {
+      window.alert('Preencha o Nome.');
       return;
     }
     setError('');
     setStatus('');
     setSavingId(-1);
     try {
-      const lateralVal = novo.lateral_cm ? parseFloat(novo.lateral_cm) : null;
-      const fundoVal = novo.fundo_cm ? parseFloat(novo.fundo_cm) : null;
+      const largura = parseNumericValue(novo.largura_cm, 0);
+      const altura = parseNumericValue(novo.altura_cm, 0);
+      const lateralVal = parseNumericValue(novo.lateral_cm, 0);
+      const fundoVal = parseNumericValue(novo.fundo_cm, 0);
       const payload = {
         nome: (novo.nome || '').trim(),
         largura_cm: largura,
         altura_cm: altura,
-        lateral_cm: Number.isNaN(lateralVal as number) ? null : lateralVal,
-        fundo_cm: Number.isNaN(fundoVal as number) ? null : fundoVal,
+        lateral_cm: lateralVal,
+        fundo_cm: fundoVal,
         tem_alca: Boolean(novo.incluir_alca),
       };
       const res = await apiFetch('/sacolas_lote', {
@@ -112,49 +107,59 @@ export default function CalculoEmLote(): React.ReactElement {
     }
   };
 
-  const persistEntry = async (id: number) => {
-    const entry = entries.find((e) => e.id === id);
-    if (!entry) return;
-    if (!entry.nome || !entry.largura_cm || !entry.altura_cm) {
-      window.alert('Preencha Nome, Largura e Altura.');
+  const parseNumericValue = (val: string | undefined, defaultValue: number = 0): number => {
+    if (!val || val.trim() === '') return defaultValue;
+    const parsed = parseFloat(val);
+    return Number.isNaN(parsed) ? defaultValue : parsed;
+  };
+
+  const persistEntry = async (entry: BatchEntry): Promise<boolean> => {
+    const largura = parseNumericValue(entry.largura_cm, 0);
+    const altura = parseNumericValue(entry.altura_cm, 0);
+    const lateralVal = parseNumericValue(entry.lateral_cm, 0);
+    const fundoVal = parseNumericValue(entry.fundo_cm, 0);
+    const payload = {
+      nome: (entry.nome || '').trim(),
+      largura_cm: largura,
+      altura_cm: altura,
+      lateral_cm: lateralVal,
+      fundo_cm: fundoVal,
+      tem_alca: Boolean(entry.incluir_alca),
+    };
+    const res = await apiFetch(`/sacolas_lote/${entry.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || 'Erro ao atualizar');
+    }
+    const updated = await res.json();
+    setEntries((list) => list.map((it) => (it.id === entry.id ? { ...mapFromApi(updated), dirty: false } : it)));
+    return true;
+  };
+
+  const [savingAll, setSavingAll] = useState(false);
+
+  const saveAllDirty = async () => {
+    const dirtyEntries = entries.filter((e) => e.dirty);
+    if (dirtyEntries.length === 0) {
+      setStatus('Nenhuma alteração para salvar.');
       return;
     }
-    const largura = parseFloat(entry.largura_cm);
-    const altura = parseFloat(entry.altura_cm);
-    if (Number.isNaN(largura) || Number.isNaN(altura)) {
-      window.alert('Largura e Altura devem ser números válidos.');
-      return;
-    }
-    setSavingId(id);
+    setSavingAll(true);
     setError('');
     setStatus('');
     try {
-      const lateralVal = entry.lateral_cm ? parseFloat(entry.lateral_cm) : null;
-      const fundoVal = entry.fundo_cm ? parseFloat(entry.fundo_cm) : null;
-      const payload = {
-        nome: (entry.nome || '').trim(),
-        largura_cm: largura,
-        altura_cm: altura,
-        lateral_cm: Number.isNaN(lateralVal as number) ? null : lateralVal,
-        fundo_cm: Number.isNaN(fundoVal as number) ? null : fundoVal,
-        tem_alca: Boolean(entry.incluir_alca),
-      };
-      const res = await apiFetch(`/sacolas_lote/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || 'Erro ao atualizar');
+      for (const entry of dirtyEntries) {
+        await persistEntry(entry);
       }
-      const updated = await res.json();
-      setEntries((list) => list.map((it) => (it.id === id ? { ...mapFromApi(updated), dirty: false } : it)));
-      setStatus('Alterações salvas no Supabase.');
+      setStatus(`${dirtyEntries.length} item(s) salvo(s) com sucesso.`);
     } catch (e: any) {
       setError(e?.message || 'Falha ao salvar alterações.');
     } finally {
-      setSavingId(null);
+      setSavingAll(false);
     }
   };
 
@@ -193,7 +198,7 @@ export default function CalculoEmLote(): React.ReactElement {
               <th style={{ textAlign: 'left' }}>Lateral (cm)</th>
               <th style={{ textAlign: 'left' }}>Fundo (cm)</th>
               <th style={{ textAlign: 'center' }}>Alça?</th>
-              <th style={{ width: 140, textAlign: 'right' }}>Ações</th>
+              <th style={{ width: 80, textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -250,22 +255,15 @@ export default function CalculoEmLote(): React.ReactElement {
                   />
                 </td>
                 <td>
-                  <div className="table-actions" style={{ justifyContent: 'flex-end', gap: 8 }}>
-                    <button
-                      className="btn-ghost small"
-                      type="button"
-                      onClick={() => persistEntry(it.id)}
-                      disabled={savingId === it.id || loading || !it.dirty}
-                    >
-                      {savingId === it.id ? 'Salvando...' : (it.dirty ? 'Salvar' : 'Salvo')}
-                    </button>
+                  <div className="table-actions" style={{ justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+                    {it.dirty && <span style={{ color: '#f59e0b', fontSize: 12 }}>●</span>}
                     <button
                       className="btn-icon danger"
                       onClick={() => removeEntry(it.id)}
                       type="button"
                       aria-label={`Excluir ${it.nome || 'tamanho'}`}
                       title="Excluir"
-                      disabled={savingId === it.id || loading}
+                      disabled={savingId === it.id || loading || savingAll}
                     >
                       🗑️
                     </button>
@@ -332,7 +330,7 @@ export default function CalculoEmLote(): React.ReactElement {
                 />
               </td>
               <td>
-                <button className="btn-primary small" type="button" onClick={addEntry} disabled={savingId !== null || loading}>
+                <button className="btn-primary small" type="button" onClick={addEntry} disabled={savingId !== null || loading || savingAll}>
                   {savingId === -1 ? 'Salvando...' : 'Adicionar'}
                 </button>
               </td>
@@ -340,15 +338,28 @@ export default function CalculoEmLote(): React.ReactElement {
           </tbody>
         </table>
 
-        <div className="settings-actions" style={{ marginTop: 16, justifyContent: 'space-between' }}>
+        <div className="settings-actions" style={{ marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             {loading && <span>Carregando…</span>}
             {status && <span className="save-ok">{status}</span>}
             {error && <span className="calc-error" style={{ display: 'inline-block', marginLeft: 8 }}>{error}</span>}
+            {entries.some((e) => e.dirty) && !savingAll && (
+              <span style={{ color: '#f59e0b', fontSize: 13, marginLeft: 8 }}>
+                ● {entries.filter((e) => e.dirty).length} alteração(ões) não salva(s)
+              </span>
+            )}
           </div>
           <div className="table-actions" style={{ gap: 8 }}>
-            <button type="button" className="btn-ghost" onClick={loadFromSupabase} disabled={loading}>
+            <button type="button" className="btn-ghost" onClick={loadFromSupabase} disabled={loading || savingAll}>
               Recarregar
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={saveAllDirty}
+              disabled={loading || savingAll || !entries.some((e) => e.dirty)}
+            >
+              {savingAll ? 'Salvando...' : 'Salvar Tudo'}
             </button>
           </div>
         </div>

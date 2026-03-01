@@ -4,6 +4,7 @@ import { apiFetch, apiJson } from '../utils/apiClient';
 
 export default function Gramaturas() {
   const [itens, setItens] = useState([]);
+  const [originalItens, setOriginalItens] = useState([]);
   const [novo, setNovo] = useState({ gramatura: '', preco: '', altura_cm: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,21 +25,35 @@ export default function Gramaturas() {
     return isNaN(n) ? 0 : n;
   };
   const maybeNumberOrNull = (val) => {
-    if (val === null || val === undefined || val === '') return null;
+    if (val === null || val === undefined || val === '') return 0;
     const s = String(val).replace(',', '.');
     const n = parseFloat(s);
-    return isNaN(n) ? null : n;
+    return isNaN(n) ? 0 : n;
+  };
+
+  const hasChanges = () => {
+    if (novo.gramatura || novo.preco) return true;
+    if (itens.length !== originalItens.length) return true;
+    return itens.some((item, idx) => {
+      const orig = originalItens[idx];
+      if (!orig) return true;
+      return item.gramatura !== orig.gramatura || 
+             String(item.preco) !== String(orig.preco) || 
+             String(item.altura_cm ?? '') !== String(orig.altura_cm ?? '');
+    });
   };
 
   const carregar = async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSaved('');
     try {
       const data = await apiJson(API.LISTAR);
       const lista = Array.isArray(data) ? data : [];
-      setItens(lista.map((g) => ({
+      const mapped = lista.map((g) => ({
         ...g,
         altura_cm: g.altura_cm ?? '',
-      })));
+      }));
+      setItens(mapped);
+      setOriginalItens(JSON.parse(JSON.stringify(mapped)));
     } catch (e) {
       setError(e.message || 'Erro ao buscar gramaturas');
     } finally {
@@ -214,11 +229,23 @@ export default function Gramaturas() {
             </tbody>
           </table>
         )}
-        <div className="settings-actions right">
-          {saved && <span className="save-ok">{saved}</span>}
-          <button className="btn-primary" type="button" onClick={salvarTudo} disabled={saving}>
-            {saving ? 'Salvando…' : 'Salvar alterações'}
-          </button>
+        <div className="settings-actions" style={{ marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            {saved && <span className="save-ok">{saved}</span>}
+            {hasChanges() && !saving && (
+              <span style={{ color: '#f59e0b', fontSize: 13, marginLeft: saved ? 8 : 0 }}>
+                ● Alterações não salvas
+              </span>
+            )}
+          </div>
+          <div className="table-actions" style={{ gap: 8 }}>
+            <button className="btn-ghost" type="button" onClick={carregar} disabled={loading || saving}>
+              Recarregar
+            </button>
+            <button className="btn-primary" type="button" onClick={salvarTudo} disabled={saving || !hasChanges()}>
+              {saving ? 'Salvando…' : 'Salvar Tudo'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

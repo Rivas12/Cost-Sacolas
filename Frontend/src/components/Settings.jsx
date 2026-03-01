@@ -325,10 +325,10 @@ export default function Settings() {
           <table className="result-table">
             <thead>
               <tr>
-                <th style={{textAlign:'left'}}>Serviço</th>
-                <th className="num">Valor (R$)</th>
-                <th className="num">Imposto (%)</th>
-                <th style={{width:90, textAlign:'left'}}>Ações</th>
+                <th>Serviço</th>
+                <th>Valor (R$)</th>
+                <th>Imposto (%)</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -440,8 +440,8 @@ export default function Settings() {
           <table className="result-table">
             <thead>
               <tr>
-                <th style={{textAlign:'left'}}>Nome</th>
-                <th className="num">Percentual</th>
+                <th>Nome</th>
+                <th>Percentual</th>
               </tr>
             </thead>
             <tbody>
