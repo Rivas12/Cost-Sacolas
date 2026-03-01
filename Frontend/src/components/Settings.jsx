@@ -482,6 +482,149 @@ export default function Settings() {
           </button>
         </div>
       </div>
+
+      <div className="settings-card">
+        <ItensAdicionaisInline />
+      </div>
     </div>
+  );
+}
+
+// Itens Adicionais inline (sem arquivo separado)
+function ItensAdicionaisInline() {
+  const ITENS_PADRAO = [
+    { id: 'caixa', nome: 'Caixa', valor: 15.00, a_cada: 300, minimo_1: true },
+  ];
+
+  const [itens, setItens] = useState(() => {
+    try {
+      const saved = localStorage.getItem('itens_adicionais');
+      return saved ? JSON.parse(saved) : ITENS_PADRAO;
+    } catch {
+      return ITENS_PADRAO;
+    }
+  });
+
+  const [novoItem, setNovoItem] = useState({ nome: '', valor: '', a_cada: '', minimo_1: true });
+
+  const salvarNoStorage = (lista) => {
+    try { localStorage.setItem('itens_adicionais', JSON.stringify(lista)); } catch {}
+  };
+
+  const adicionarItem = () => {
+    if (!novoItem.nome) return;
+    const novo = {
+      id: `item_${Date.now()}`,
+      nome: novoItem.nome,
+      valor: parseFloat(novoItem.valor) || 0,
+      a_cada: parseInt(novoItem.a_cada) || 1,
+      minimo_1: novoItem.minimo_1,
+    };
+    const novaLista = [...itens, novo];
+    setItens(novaLista);
+    salvarNoStorage(novaLista);
+    setNovoItem({ nome: '', valor: '', a_cada: '', minimo_1: true });
+  };
+
+  const atualizarItem = (id, campo, valor) => {
+    const novaLista = itens.map((item) => {
+      if (item.id !== id) return item;
+      if (campo === 'nome') return { ...item, nome: valor };
+      if (campo === 'a_cada') return { ...item, a_cada: parseInt(valor) || 0 };
+      if (campo === 'minimo_1') return { ...item, minimo_1: valor };
+      return { ...item, valor: parseFloat(valor) || 0 };
+    });
+    setItens(novaLista);
+    salvarNoStorage(novaLista);
+  };
+
+  const removerItem = (id) => {
+    const novaLista = itens.filter((item) => item.id !== id);
+    setItens(novaLista);
+    salvarNoStorage(novaLista);
+  };
+
+  return (
+    <>
+      <h3 style={{ marginTop: 0 }}>Itens Adicionais</h3>
+      <p className="settings-sub" style={{ marginTop: 4 }}>
+        Cadastre itens extras cobrados por quantidade (ex: 1 caixa a cada 300 un.). Salvos localmente.
+      </p>
+      <table className="result-table">
+        <thead>
+          <tr>
+            <th style={{ width: '35%' }}>Nome</th>
+            <th style={{ width: '20%' }}>Valor (R$)</th>
+            <th style={{ width: '20%' }}>A cada (un.)</th>
+            <th style={{ width: '10%', textAlign: 'center' }}>Mín. 1</th>
+            <th style={{ width: '15%' }}>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((item) => (
+            <tr key={item.id}>
+              <td>
+                <input placeholder="Ex.: Caixa" value={item.nome} onChange={(e) => atualizarItem(item.id, 'nome', e.target.value)} />
+              </td>
+              <td>
+                <div className="input-suffix">
+                  <input type="number" step="0.01" min="0" placeholder="0,00" value={item.valor} onChange={(e) => atualizarItem(item.id, 'valor', e.target.value)} />
+                  <span className="suffix">R$</span>
+                </div>
+              </td>
+              <td>
+                <div className="input-suffix">
+                  <input type="number" step="1" min="1" placeholder="300" value={item.a_cada} onChange={(e) => atualizarItem(item.id, 'a_cada', e.target.value)} />
+                  <span className="suffix">un.</span>
+                </div>
+              </td>
+              <td style={{ textAlign: 'center' }}>
+                <input 
+                  type="checkbox" 
+                  checked={item.minimo_1 ?? true} 
+                  onChange={(e) => atualizarItem(item.id, 'minimo_1', e.target.checked)} 
+                  title="Sempre cobrar no mínimo 1" 
+                  style={{ width: 18, height: 18 }}
+                />
+              </td>
+              <td>
+                <div className="table-actions">
+                  <button className="btn-icon danger" onClick={() => removerItem(item.id)} type="button" title="Excluir">🗑️</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <td>
+              <input placeholder="Novo item" value={novoItem.nome} onChange={(e) => setNovoItem((n) => ({ ...n, nome: e.target.value }))} />
+            </td>
+            <td>
+              <div className="input-suffix">
+                <input type="number" step="0.01" min="0" placeholder="0,00" value={novoItem.valor} onChange={(e) => setNovoItem((n) => ({ ...n, valor: e.target.value }))} />
+                <span className="suffix">R$</span>
+              </div>
+            </td>
+            <td>
+              <div className="input-suffix">
+                <input type="number" step="1" min="1" placeholder="300" value={novoItem.a_cada} onChange={(e) => setNovoItem((n) => ({ ...n, a_cada: e.target.value }))} />
+                <span className="suffix">un.</span>
+              </div>
+            </td>
+            <td style={{ textAlign: 'center' }}>
+              <input 
+                type="checkbox" 
+                checked={novoItem.minimo_1} 
+                onChange={(e) => setNovoItem((n) => ({ ...n, minimo_1: e.target.checked }))} 
+                title="Sempre cobrar no mínimo 1" 
+                style={{ width: 18, height: 18 }}
+              />
+            </td>
+            <td>
+              <button className="btn-ghost small" type="button" onClick={adicionarItem}>Adicionar</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </>
   );
 }

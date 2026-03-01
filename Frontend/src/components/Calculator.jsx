@@ -23,6 +23,9 @@ export default function Calculator({ onOpenBatch }) {
   const [valorSilkServico, setValorSilkServico] = useState(null);
   const [servicosSelecionados, setServicosSelecionados] = useState([]);
 
+  // Itens adicionais (carregados do localStorage, sempre cobrados)
+  const [itensAdicionais, setItensAdicionais] = useState([]);
+
   // Form state
   const [form, setForm] = useState({
     gramatura_id: '',
@@ -150,6 +153,39 @@ export default function Calculator({ onOpenBatch }) {
       cancelled = true;
     };
   }, []);
+
+  // Carrega itens adicionais do localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('itens_adicionais');
+      if (saved) {
+        setItensAdicionais(JSON.parse(saved));
+      }
+    } catch {}
+  }, []);
+
+  // Calcula totais dos itens adicionais (sempre inclui todos automaticamente)
+  const calcularItensAdicionais = useMemo(() => {
+    const quantidade = parseInt(form.quantidade || '0');
+    if (quantidade <= 0 || itensAdicionais.length === 0) return { itens: [], total: 0 };
+
+    const itensCalculados = itensAdicionais.map((item) => {
+      const aCada = parseInt(item.a_cada) || 1;
+      const valor = parseFloat(item.valor) || 0;
+      const minimo1 = item.minimo_1 !== false; // default true
+      let quantidadeItens = Math.ceil(quantidade / aCada);
+      if (minimo1 && quantidadeItens < 1) quantidadeItens = 1;
+      const valorTotal = quantidadeItens * valor;
+      return {
+        ...item,
+        quantidade_calculada: quantidadeItens,
+        valor_total: valorTotal,
+      };
+    });
+
+    const total = itensCalculados.reduce((acc, item) => acc + item.valor_total, 0);
+    return { itens: itensCalculados, total };
+  }, [itensAdicionais, form.quantidade]);
 
   // Handlers
   const update = (field) => (e) => {
