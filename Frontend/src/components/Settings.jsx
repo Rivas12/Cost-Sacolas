@@ -7,9 +7,11 @@ export default function Settings() {
   const { settings, setSettings } = useSettings();
   const [impostos, setImpostos] = useState([]);
   const [servicos, setServicos] = useState([]);
+  const [custosAdicionais, setCustosAdicionais] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [novoServico, setNovoServico] = useState({ nome: '', valor: '', imposto_percentual: '' });
+  const [novoCusto, setNovoCusto] = useState({ nome: '', valor: '', a_cada: 1, min_1: true });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
 
@@ -21,6 +23,10 @@ export default function Settings() {
     SERVICOS_CRIAR: '/servicos',
     SERVICOS_ATUALIZAR: (id) => `/servicos/${id}`,
     SERVICOS_DELETAR: (id) => `/servicos/${id}`,
+    CUSTOS_LISTAR: '/custos_adicionais',
+    CUSTOS_CRIAR: '/custos_adicionais',
+    CUSTOS_ATUALIZAR: (id) => `/custos_adicionais/${id}`,
+    CUSTOS_DELETAR: (id) => `/custos_adicionais/${id}`,
     CONFIG_GET: '/configuracoes',
     CONFIG_PUT: '/configuracoes',
   };
@@ -36,16 +42,19 @@ export default function Settings() {
     const carregar = async () => {
       setLoading(true); setError('');
       try {
-        // Busca impostos e configurações em paralelo
-        const [dataImp, dataCfg, dataServ] = await Promise.all([
+        // Busca impostos, configurações, serviços e custos adicionais em paralelo
+        const [dataImp, dataCfg, dataServ, dataCustos] = await Promise.all([
           apiJson(API.LISTAR),
           apiJson(API.CONFIG_GET),
           apiJson(API.SERVICOS_LISTAR).catch((e) => []),
+          apiJson(API.CUSTOS_LISTAR).catch((e) => []),
         ]);
 
         setImpostos(Array.isArray(dataImp) ? dataImp : []);
         const listaServicos = Array.isArray(dataServ) ? dataServ : [];
         setServicos(listaServicos);
+        const listaCustos = Array.isArray(dataCustos) ? dataCustos : [];
+        setCustosAdicionais(listaCustos);
         // Não traz mais valor_silk para o contexto; serviços serão marcados manualmente
         // Aplica configurações do servidor
         if (dataCfg) {
@@ -104,6 +113,36 @@ export default function Settings() {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Falha ao excluir serviço');
     setServicos((list) => list.filter((i) => i.id !== id));
+  };
+
+  // CRUD Custos Adicionais
+  const salvarCustoAdicional = async (custo) => {
+    setError('');
+    const payload = {
+      nome: custo.nome,
+      valor: toNumber(custo.valor),
+      a_cada: parseInt(custo.a_cada) || 1,
+      min_1: custo.min_1 !== false,
+    };
+    const isNovo = !custo.id;
+    const url = isNovo ? API.CUSTOS_CRIAR : API.CUSTOS_ATUALIZAR(custo.id);
+    const method = isNovo ? 'POST' : 'PUT';
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Falha ao salvar custo adicional');
+    if (isNovo) {
+      setCustosAdicionais((list) => [...list, data]);
+    } else {
+      setCustosAdicionais((list) => list.map((i) => (i.id === custo.id ? { ...i, ...payload } : i)));
+    }
+  };
+
+  const removerCustoAdicional = async (id) => {
+    setError('');
+    const res = await apiFetch(API.CUSTOS_DELETAR(id), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Falha ao excluir custo adicional');
+    setCustosAdicionais((list) => list.filter((i) => i.id !== id));
   };
 
   const salvarTudo = async () => {
@@ -203,12 +242,50 @@ export default function Settings() {
         setNovoServico({ nome: 'Silk', valor: '', imposto_percentual: '' });
       }
 
+      // Salva custos adicionais
+      const custosExistentes = custosAdicionais.filter((c) => !!c.id);
+      for (const custo of custosExistentes) {
+        const payload = {
+          nome: custo.nome,
+          valor: toNumber(custo.valor),
+          a_cada: parseInt(custo.a_cada) || 1,
+          min_1: custo.min_1 !== false,
+        };
+        const res = await apiFetch(API.CUSTOS_ATUALIZAR(custo.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `Falha ao salvar ${custo.nome}`);
+      }
+
+      // Adiciona novos custos
+      if (novoCusto.nome && novoCusto.valor !== '') {
+        const payloadNovo = {
+          nome: novoCusto.nome,
+          valor: toNumber(novoCusto.valor),
+          a_cada: parseInt(novoCusto.a_cada) || 1,
+          min_1: novoCusto.min_1 !== false,
+        };
+        const resNovo = await apiFetch(API.CUSTOS_CRIAR, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadNovo),
+        });
+        const dataNovo = await resNovo.json();
+        if (!resNovo.ok) throw new Error(dataNovo?.error || `Falha ao adicionar ${novoCusto.nome}`);
+        setNovoCusto({ nome: '', valor: '', a_cada: 1, min_1: true });
+      }
+
       // Recarrega a lista para refletir ids e valores corretos
       try {
         const dataList = await apiJson(API.LISTAR);
         setImpostos(Array.isArray(dataList) ? dataList : []);
         const dataSvc = await apiJson(API.SERVICOS_LISTAR);
         setServicos(Array.isArray(dataSvc) ? dataSvc : []);
+        const dataCustos = await apiJson(API.CUSTOS_LISTAR);
+        setCustosAdicionais(Array.isArray(dataCustos) ? dataCustos : []);
       } catch {}
 
       setSaved('Alterações salvas com sucesso.');
@@ -450,6 +527,149 @@ export default function Settings() {
       </div>
 
       <div className="settings-card">
+        <h3 style={{marginTop:0}}>Custos Adicionais</h3>
+        <p className="settings-sub" style={{marginTop:4}}>
+          Cadastre custos extras cobrados por quantidade (ex: 1 caixa a cada 300 un.).
+        </p>
+        {loading ? (
+          <div>Carregando...</div>
+        ) : (
+          <table className="result-table">
+            <thead>
+              <tr>
+                <th style={{width:'30%'}}>Nome</th>
+                <th style={{width:'20%'}}>Valor (R$)</th>
+                <th style={{width:'20%'}}>A cada (un.)</th>
+                <th style={{width:'15%', textAlign:'center'}}>Mín. 1</th>
+                <th style={{width:'15%'}}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {custosAdicionais.map((custo) => (
+                <tr key={custo.id}>
+                  <td>
+                    <input
+                      placeholder="Ex.: Caixa"
+                      value={custo.nome}
+                      onChange={(e) => setCustosAdicionais((list) => list.map((c) => c.id === custo.id ? { ...c, nome: e.target.value } : c))}
+                    />
+                  </td>
+                  <td>
+                    <div className="input-suffix">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0,00"
+                        value={custo.valor}
+                        onChange={(e) => setCustosAdicionais((list) => list.map((c) => c.id === custo.id ? { ...c, valor: e.target.value } : c))}
+                      />
+                      <span className="suffix">R$</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="input-suffix">
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        placeholder="300"
+                        value={custo.a_cada || 1}
+                        onChange={(e) => setCustosAdicionais((list) => list.map((c) => c.id === custo.id ? { ...c, a_cada: e.target.value } : c))}
+                      />
+                      <span className="suffix">un.</span>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={custo.min_1 !== false}
+                      onChange={(e) => setCustosAdicionais((list) => list.map((c) => c.id === custo.id ? { ...c, min_1: e.target.checked } : c))}
+                      title="Sempre cobrar no mínimo 1"
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td>
+                    <div className="table-actions">
+                      <button
+                        className="btn-icon danger"
+                        onClick={() => removerCustoAdicional(custo.id)}
+                        type="button"
+                        aria-label={`Excluir ${custo.nome}`}
+                        title="Excluir"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td>
+                  <input
+                    placeholder="Novo custo"
+                    value={novoCusto.nome}
+                    onChange={(e) => setNovoCusto((n) => ({ ...n, nome: e.target.value }))}
+                  />
+                </td>
+                <td>
+                  <div className="input-suffix">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={novoCusto.valor}
+                      onChange={(e) => setNovoCusto((n) => ({ ...n, valor: e.target.value }))}
+                    />
+                    <span className="suffix">R$</span>
+                  </div>
+                </td>
+                <td>
+                  <div className="input-suffix">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="300"
+                      value={novoCusto.a_cada || 1}
+                      onChange={(e) => setNovoCusto((n) => ({ ...n, a_cada: e.target.value }))}
+                    />
+                    <span className="suffix">un.</span>
+                  </div>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={novoCusto.min_1 !== false}
+                    onChange={(e) => setNovoCusto((n) => ({ ...n, min_1: e.target.checked }))}
+                    title="Sempre cobrar no mínimo 1"
+                    style={{ width: 18, height: 18 }}
+                  />
+                </td>
+                <td>
+                  <button
+                    className="btn-ghost small"
+                    type="button"
+                    onClick={() => {
+                      if (!novoCusto.nome) return;
+                      setCustosAdicionais((list) => [
+                        ...list,
+                        { nome: novoCusto.nome, valor: novoCusto.valor, a_cada: parseInt(novoCusto.a_cada) || 1, min_1: novoCusto.min_1 !== false }
+                      ]);
+                      setNovoCusto({ nome: '', valor: '', a_cada: 1, min_1: true });
+                    }}
+                  >
+                    Adicionar
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="settings-card">
         <h3 style={{marginTop:0}}>Impostos fixos</h3>
   <p className="settings-sub" style={{marginTop:4}}>Altere apenas os percentuais dos impostos fixos (não é possível excluir ou criar novos).</p>
 
@@ -499,149 +719,6 @@ export default function Settings() {
           </button>
         </div>
       </div>
-
-      <div className="settings-card">
-        <ItensAdicionaisInline />
-      </div>
     </div>
-  );
-}
-
-// Itens Adicionais inline (sem arquivo separado)
-function ItensAdicionaisInline() {
-  const ITENS_PADRAO = [
-    { id: 'caixa', nome: 'Caixa', valor: 15.00, a_cada: 300, minimo_1: true },
-  ];
-
-  const [itens, setItens] = useState(() => {
-    try {
-      const saved = localStorage.getItem('itens_adicionais');
-      return saved ? JSON.parse(saved) : ITENS_PADRAO;
-    } catch {
-      return ITENS_PADRAO;
-    }
-  });
-
-  const [novoItem, setNovoItem] = useState({ nome: '', valor: '', a_cada: '', minimo_1: true });
-
-  const salvarNoStorage = (lista) => {
-    try { localStorage.setItem('itens_adicionais', JSON.stringify(lista)); } catch {}
-  };
-
-  const adicionarItem = () => {
-    if (!novoItem.nome) return;
-    const novo = {
-      id: `item_${Date.now()}`,
-      nome: novoItem.nome,
-      valor: parseFloat(novoItem.valor) || 0,
-      a_cada: parseInt(novoItem.a_cada) || 1,
-      minimo_1: novoItem.minimo_1,
-    };
-    const novaLista = [...itens, novo];
-    setItens(novaLista);
-    salvarNoStorage(novaLista);
-    setNovoItem({ nome: '', valor: '', a_cada: '', minimo_1: true });
-  };
-
-  const atualizarItem = (id, campo, valor) => {
-    const novaLista = itens.map((item) => {
-      if (item.id !== id) return item;
-      if (campo === 'nome') return { ...item, nome: valor };
-      if (campo === 'a_cada') return { ...item, a_cada: parseInt(valor) || 0 };
-      if (campo === 'minimo_1') return { ...item, minimo_1: valor };
-      return { ...item, valor: parseFloat(valor) || 0 };
-    });
-    setItens(novaLista);
-    salvarNoStorage(novaLista);
-  };
-
-  const removerItem = (id) => {
-    const novaLista = itens.filter((item) => item.id !== id);
-    setItens(novaLista);
-    salvarNoStorage(novaLista);
-  };
-
-  return (
-    <>
-      <h3 style={{ marginTop: 0 }}>Itens Adicionais</h3>
-      <p className="settings-sub" style={{ marginTop: 4 }}>
-        Cadastre itens extras cobrados por quantidade (ex: 1 caixa a cada 300 un.). Salvos localmente.
-      </p>
-      <table className="result-table">
-        <thead>
-          <tr>
-            <th style={{ width: '35%' }}>Nome</th>
-            <th style={{ width: '20%' }}>Valor (R$)</th>
-            <th style={{ width: '20%' }}>A cada (un.)</th>
-            <th style={{ width: '10%', textAlign: 'center' }}>Mín. 1</th>
-            <th style={{ width: '15%' }}>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {itens.map((item) => (
-            <tr key={item.id}>
-              <td>
-                <input placeholder="Ex.: Caixa" value={item.nome} onChange={(e) => atualizarItem(item.id, 'nome', e.target.value)} />
-              </td>
-              <td>
-                <div className="input-suffix">
-                  <input type="number" step="0.01" min="0" placeholder="0,00" value={item.valor} onChange={(e) => atualizarItem(item.id, 'valor', e.target.value)} />
-                  <span className="suffix">R$</span>
-                </div>
-              </td>
-              <td>
-                <div className="input-suffix">
-                  <input type="number" step="1" min="1" placeholder="300" value={item.a_cada} onChange={(e) => atualizarItem(item.id, 'a_cada', e.target.value)} />
-                  <span className="suffix">un.</span>
-                </div>
-              </td>
-              <td style={{ textAlign: 'center' }}>
-                <input 
-                  type="checkbox" 
-                  checked={item.minimo_1 ?? true} 
-                  onChange={(e) => atualizarItem(item.id, 'minimo_1', e.target.checked)} 
-                  title="Sempre cobrar no mínimo 1" 
-                  style={{ width: 18, height: 18 }}
-                />
-              </td>
-              <td>
-                <div className="table-actions">
-                  <button className="btn-icon danger" onClick={() => removerItem(item.id)} type="button" title="Excluir">🗑️</button>
-                </div>
-              </td>
-            </tr>
-          ))}
-          <tr>
-            <td>
-              <input placeholder="Novo item" value={novoItem.nome} onChange={(e) => setNovoItem((n) => ({ ...n, nome: e.target.value }))} />
-            </td>
-            <td>
-              <div className="input-suffix">
-                <input type="number" step="0.01" min="0" placeholder="0,00" value={novoItem.valor} onChange={(e) => setNovoItem((n) => ({ ...n, valor: e.target.value }))} />
-                <span className="suffix">R$</span>
-              </div>
-            </td>
-            <td>
-              <div className="input-suffix">
-                <input type="number" step="1" min="1" placeholder="300" value={novoItem.a_cada} onChange={(e) => setNovoItem((n) => ({ ...n, a_cada: e.target.value }))} />
-                <span className="suffix">un.</span>
-              </div>
-            </td>
-            <td style={{ textAlign: 'center' }}>
-              <input 
-                type="checkbox" 
-                checked={novoItem.minimo_1} 
-                onChange={(e) => setNovoItem((n) => ({ ...n, minimo_1: e.target.checked }))} 
-                title="Sempre cobrar no mínimo 1" 
-                style={{ width: 18, height: 18 }}
-              />
-            </td>
-            <td>
-              <button className="btn-ghost small" type="button" onClick={adicionarItem}>Adicionar</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </>
   );
 }

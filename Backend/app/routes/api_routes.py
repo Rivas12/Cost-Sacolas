@@ -770,6 +770,102 @@ def delete_servico(id: int):
     client.table('servicos').delete().eq('id', id).execute()
     return jsonify({'message': 'Serviço removido'})
 
+
+# CRUD custos_adicionais (Supabase)
+@api_bp.route('/custos_adicionais', methods=['GET'])
+def get_custos_adicionais():
+    """Lista todos os custos adicionais cadastrados."""
+    client = get_client()
+    resp = client.table('custos_adicionais').select('id, nome, valor, min_1, a_cada').order('id').execute()
+    custos = [
+        {
+            'id': row.get('id'),
+            'nome': row.get('nome'),
+            'valor': float(row.get('valor') or 0.0),
+            'min_1': row.get('min_1', True),
+            'a_cada': int(row.get('a_cada') or 1),
+        }
+        for row in (resp.data or [])
+    ]
+    return jsonify(custos)
+
+
+@api_bp.route('/custos_adicionais', methods=['POST'])
+def create_custo_adicional():
+    """Cria um novo custo adicional."""
+    data = request.get_json() or {}
+    nome = (data.get('nome') or '').strip()
+    valor = data.get('valor')
+    min_1 = data.get('min_1', True)
+    a_cada = data.get('a_cada', 1)
+
+    if not nome or valor is None:
+        return jsonify({'error': 'Campos nome e valor são obrigatórios'}), 400
+
+    try:
+        valor_f = float(valor)
+        a_cada_i = int(a_cada) if a_cada else 1
+    except Exception:
+        return jsonify({'error': 'Valor ou a_cada inválido'}), 400
+
+    client = get_client()
+    resp = client.table('custos_adicionais').insert({
+        'nome': nome,
+        'valor': valor_f,
+        'min_1': bool(min_1),
+        'a_cada': a_cada_i,
+    }).execute()
+    
+    new_row = resp.data[0] if resp.data else {}
+    return jsonify({
+        'id': new_row.get('id'),
+        'nome': nome,
+        'valor': valor_f,
+        'min_1': bool(min_1),
+        'a_cada': a_cada_i,
+    }), 201
+
+
+@api_bp.route('/custos_adicionais/<int:id>', methods=['PUT'])
+def update_custo_adicional(id: int):
+    """Atualiza um custo adicional existente."""
+    data = request.get_json() or {}
+    updates = {}
+
+    if 'nome' in data:
+        updates['nome'] = (data.get('nome') or '').strip()
+    
+    if 'valor' in data:
+        try:
+            updates['valor'] = float(data.get('valor'))
+        except Exception:
+            return jsonify({'error': 'Valor inválido'}), 400
+    
+    if 'min_1' in data:
+        updates['min_1'] = bool(data.get('min_1'))
+    
+    if 'a_cada' in data:
+        try:
+            updates['a_cada'] = int(data.get('a_cada'))
+        except Exception:
+            return jsonify({'error': 'a_cada inválido'}), 400
+
+    if not updates:
+        return jsonify({'error': 'Informe ao menos um campo para atualizar'}), 400
+
+    client = get_client()
+    client.table('custos_adicionais').update(updates).eq('id', id).execute()
+    return jsonify({'message': 'Custo adicional atualizado', 'id': id, **updates})
+
+
+@api_bp.route('/custos_adicionais/<int:id>', methods=['DELETE'])
+def delete_custo_adicional(id: int):
+    """Remove um custo adicional."""
+    client = get_client()
+    client.table('custos_adicionais').delete().eq('id', id).execute()
+    return jsonify({'message': 'Custo adicional removido'})
+
+
 # CRUD sacolas_lote (Supabase)
 @api_bp.route('/sacolas_lote', methods=['GET'])
 def listar_sacolas_lote():
