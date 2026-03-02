@@ -40,6 +40,7 @@ export default function Calculator({ onOpenBatch }) {
     incluir_alca: true,
     incluir_fundo: false,
     cortar_tecido: false,
+    incluir_cordao: false,
     lateral_cm: '',
     fundo_cm: '',
   });
@@ -484,6 +485,10 @@ export default function Calculator({ onOpenBatch }) {
             <label title="Divide a largura do tecido pela metade (tecido cortado ao meio)">
               <input type="checkbox" checked={form.cortar_tecido} onChange={update('cortar_tecido')} />
               Cortar tecido
+            </label>
+            <label>
+              <input type="checkbox" checked={form.incluir_cordao} onChange={update('incluir_cordao')} />
+              Incluir cordão
             </label>
           </div>
         </div>

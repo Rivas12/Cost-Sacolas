@@ -297,6 +297,23 @@ export default function Settings() {
           </div>
 
           <div className="settings-field">
+            <label htmlFor="valor_cordao">Valor cordão (mt)</label>
+            <div className="input-suffix">
+              <input
+                id="valor_cordao"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={settings.valor_cordao ?? ''}
+                onChange={(e) => setSettings((s) => ({ ...s, valor_cordao: e.target.value }))}
+              />
+              <span className="suffix">R$</span>
+            </div>
+            <small>Valor do cordão por metro quando "Incluir cordão" estiver marcado</small>
+          </div>
+
+          <div className="settings-field">
             <label htmlFor="ipi">IPI (%)</label>
             <div className="input-suffix">
               <input
