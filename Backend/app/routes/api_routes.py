@@ -415,21 +415,31 @@ def gerar_pdf_batch_precos():
         validade_txt = '7 dias'
         cliente_tem_ie_ctx = bool(contexto.get('cliente_tem_ie'))
         ie_txt = 'Sim' if cliente_tem_ie_ctx else 'Não'
+        
+        # ICMS e IPI: só porcentagem
         try:
-            raw_icms_header = resultados[0].get('icms_percentual') if resultados else None
-            icms_header_pct = float(raw_icms_header) if raw_icms_header is not None else None
+            raw_icms_pct = resultados[0].get('icms_percentual') if resultados else None
+            icms_pct = float(raw_icms_pct) if raw_icms_pct is not None else None
         except Exception:
-            icms_header_pct = None
-        icms_header_txt = f"{icms_header_pct:.2f}%" if icms_header_pct is not None else '—'
+            icms_pct = None
+        icms_header_txt = f"{icms_pct:.2f}%" if icms_pct is not None else '—'
+        
+        try:
+            raw_ipi_pct = resultados[0].get('ipi_percentual') if resultados else None
+            ipi_pct = float(raw_ipi_pct) if raw_ipi_pct is not None else None
+        except Exception:
+            ipi_pct = None
+        ipi_header_txt = f"{ipi_pct:.2f}%" if ipi_pct is not None else '—'
 
+        # Tabela com 3 colunas iguais
+        col_w = doc.width / 3
         dados = Table(
             [
-                ['Empresa:', empresa_nome, 'Data:', data_txt],
-                ['Estado:', estado_val, 'Hora:', hora_txt],
-                ['Quantidade:', qtd_txt, 'Validade:', validade_txt],
-                ['Possui IE?', ie_txt, 'ICMS:', icms_header_txt],
+                ['Empresa:', empresa_nome, 'Data:', data_txt, 'Hora:', hora_txt],
+                ['Estado:', estado_val, 'Quantidade:', qtd_txt, 'Validade:', validade_txt],
+                ['Possui IE?', ie_txt, 'ICMS:', icms_header_txt, 'IPI:', ipi_header_txt],
             ],
-            colWidths=[27*mm, 60*mm, 22*mm, 40*mm]
+            colWidths=[22*mm, col_w - 22*mm, 22*mm, col_w - 22*mm, 22*mm, col_w - 22*mm]
         )
         dados.setStyle(TableStyle([
             ('GRID', (0, 0), (-1, -1), 0.5, cinza_grid),
@@ -437,6 +447,7 @@ def gerar_pdf_batch_precos():
             ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
             ('FONT', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONT', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('FONT', (4, 0), (4, -1), 'Helvetica-Bold'),
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ('RIGHTPADDING', (0, 0), (-1, -1), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 5),
