@@ -776,13 +776,12 @@ def delete_servico(id: int):
 def get_custos_adicionais():
     """Lista todos os custos adicionais cadastrados."""
     client = get_client()
-    resp = client.table('custos_adicionais').select('id, nome, valor, min_1, a_cada').order('id').execute()
+    resp = client.table('custos_adicionais').select('id, nome, valor, a_cada').order('id').execute()
     custos = [
         {
             'id': row.get('id'),
             'nome': row.get('nome'),
             'valor': float(row.get('valor') or 0.0),
-            'min_1': row.get('min_1', True),
             'a_cada': int(row.get('a_cada') or 1),
         }
         for row in (resp.data or [])
@@ -796,7 +795,6 @@ def create_custo_adicional():
     data = request.get_json() or {}
     nome = (data.get('nome') or '').strip()
     valor = data.get('valor')
-    min_1 = data.get('min_1', True)
     a_cada = data.get('a_cada', 1)
 
     if not nome or valor is None:
@@ -812,7 +810,6 @@ def create_custo_adicional():
     resp = client.table('custos_adicionais').insert({
         'nome': nome,
         'valor': valor_f,
-        'min_1': bool(min_1),
         'a_cada': a_cada_i,
     }).execute()
     
@@ -821,7 +818,6 @@ def create_custo_adicional():
         'id': new_row.get('id'),
         'nome': nome,
         'valor': valor_f,
-        'min_1': bool(min_1),
         'a_cada': a_cada_i,
     }), 201
 
@@ -840,9 +836,6 @@ def update_custo_adicional(id: int):
             updates['valor'] = float(data.get('valor'))
         except Exception:
             return jsonify({'error': 'Valor inválido'}), 400
-    
-    if 'min_1' in data:
-        updates['min_1'] = bool(data.get('min_1'))
     
     if 'a_cada' in data:
         try:
@@ -1151,9 +1144,43 @@ def calcular_preco():
         valor_cordao_unitario = round(custo_cordao * percentual_cordao, 4)
         valor_cordao_total = round(valor_cordao_unitario * quantidade, 2)
 
-    # ==== ETAPA 1: Custo Base = Material + Perdas + Cordão ====
-    valor_custos_operacionais = 0  # Removido outros_custos - será substituído por custos adicionais
-    custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais + valor_cordao_total, 2)
+    # ==== CÁLCULO DOS CUSTOS ADICIONAIS ====
+    # Busca todos os custos adicionais do banco e calcula automaticamente
+    # Cada custo tem: nome, valor (R$), a_cada (un.) - sempre cobra mínimo 1
+    custos_adicionais_lista = []
+    custos_adicionais_total = 0
+    try:
+        resp_custos = client.table('custos_adicionais').select('id, nome, valor, a_cada').order('id').execute()
+        for custo in (resp_custos.data or []):
+            nome = custo.get('nome') or ''
+            valor = float(custo.get('valor') or 0)
+            a_cada = int(custo.get('a_cada') or 1)
+            
+            if valor <= 0 or a_cada <= 0:
+                continue
+            
+            # Calcula quantas unidades desse custo são necessárias (sempre mínimo 1)
+            qtd_custos = max(1, math.ceil(quantidade / a_cada))
+            
+            valor_item = round(valor * qtd_custos, 2)
+            custos_adicionais_total += valor_item
+            
+            custos_adicionais_lista.append({
+                'nome': nome,
+                'valor_unitario': valor,
+                'a_cada': a_cada,
+                'quantidade': qtd_custos,
+                'valor_total': valor_item,
+            })
+    except Exception as e:
+        # Se falhar, continua sem custos adicionais
+        pass
+    
+    custos_adicionais_total = round(custos_adicionais_total, 2)
+
+    # ==== ETAPA 1: Custo Base = Material + Perdas + Cordão + Custos Adicionais ====
+    valor_custos_operacionais = 0  # Removido outros_custos
+    custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais + valor_cordao_total + custos_adicionais_total, 2)
 
     # ==== ETAPA 2: Margem aplicada ====
     margem_aplicada = margem
@@ -1385,6 +1412,10 @@ def calcular_preco():
         'custo_cordao_config': round(custo_cordao, 2),
         'valor_cordao_unitario': round(valor_cordao_unitario, 4),
         'valor_cordao_total': round(valor_cordao_total, 2),
+        
+        # ===== CUSTOS ADICIONAIS =====
+        'custos_adicionais_lista': custos_adicionais_lista,
+        'custos_adicionais_total': round(custos_adicionais_total, 2),
         
         'custo_base': round(custo_base, 2),
         

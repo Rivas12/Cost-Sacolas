@@ -778,6 +778,17 @@ export default function Calculator({ onOpenBatch }) {
                       <td className="num">R$ {Number(resultado.valor_cordao_total || 0).toFixed(2)}</td>
                     </tr>
                   )}
+                  {resultado.custos_adicionais_lista && resultado.custos_adicionais_lista.length > 0 && (
+                    <>
+                      {resultado.custos_adicionais_lista.map((custo, idx) => (
+                        <tr key={`custo-ad-${idx}`}>
+                          <td>{custo.nome} ({custo.quantidade}x a cada {custo.a_cada} un.)</td>
+                          <td className="num">R$ {Number(custo.valor_unitario || 0).toFixed(2)}</td>
+                          <td className="num">R$ {Number(custo.valor_total || 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </tbody>
               </table>
               {(resultado.servicos_detalhe && resultado.servicos_detalhe.length > 0) ? (

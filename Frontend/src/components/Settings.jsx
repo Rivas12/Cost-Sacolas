@@ -11,7 +11,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [novoServico, setNovoServico] = useState({ nome: '', valor: '', imposto_percentual: '' });
-  const [novoCusto, setNovoCusto] = useState({ nome: '', valor: '', a_cada: 1, min_1: true });
+  const [novoCusto, setNovoCusto] = useState({ nome: '', valor: '', a_cada: 1 });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
 
@@ -122,7 +122,6 @@ export default function Settings() {
       nome: custo.nome,
       valor: toNumber(custo.valor),
       a_cada: parseInt(custo.a_cada) || 1,
-      min_1: custo.min_1 !== false,
     };
     const isNovo = !custo.id;
     const url = isNovo ? API.CUSTOS_CRIAR : API.CUSTOS_ATUALIZAR(custo.id);
@@ -249,7 +248,6 @@ export default function Settings() {
           nome: custo.nome,
           valor: toNumber(custo.valor),
           a_cada: parseInt(custo.a_cada) || 1,
-          min_1: custo.min_1 !== false,
         };
         const res = await apiFetch(API.CUSTOS_ATUALIZAR(custo.id), {
           method: 'PUT',
@@ -266,7 +264,6 @@ export default function Settings() {
           nome: novoCusto.nome,
           valor: toNumber(novoCusto.valor),
           a_cada: parseInt(novoCusto.a_cada) || 1,
-          min_1: novoCusto.min_1 !== false,
         };
         const resNovo = await apiFetch(API.CUSTOS_CRIAR, {
           method: 'POST',
@@ -275,7 +272,7 @@ export default function Settings() {
         });
         const dataNovo = await resNovo.json();
         if (!resNovo.ok) throw new Error(dataNovo?.error || `Falha ao adicionar ${novoCusto.nome}`);
-        setNovoCusto({ nome: '', valor: '', a_cada: 1, min_1: true });
+        setNovoCusto({ nome: '', valor: '', a_cada: 1 });
       }
 
       // Recarrega a lista para refletir ids e valores corretos
@@ -520,10 +517,9 @@ export default function Settings() {
           <table className="result-table">
             <thead>
               <tr>
-                <th style={{width:'30%'}}>Nome</th>
-                <th style={{width:'20%'}}>Valor (R$)</th>
-                <th style={{width:'20%'}}>A cada (un.)</th>
-                <th style={{width:'15%', textAlign:'center'}}>Mín. 1</th>
+                <th style={{width:'35%'}}>Nome</th>
+                <th style={{width:'25%'}}>Valor (R$)</th>
+                <th style={{width:'25%'}}>A cada (un.)</th>
                 <th style={{width:'15%'}}>Ações</th>
               </tr>
             </thead>
@@ -562,15 +558,6 @@ export default function Settings() {
                       />
                       <span className="suffix">un.</span>
                     </div>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={custo.min_1 !== false}
-                      onChange={(e) => setCustosAdicionais((list) => list.map((c) => c.id === custo.id ? { ...c, min_1: e.target.checked } : c))}
-                      title="Sempre cobrar no mínimo 1"
-                      style={{ width: 18, height: 18, cursor: 'pointer' }}
-                    />
                   </td>
                   <td>
                     <div className="table-actions">
@@ -621,15 +608,6 @@ export default function Settings() {
                     <span className="suffix">un.</span>
                   </div>
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={novoCusto.min_1 !== false}
-                    onChange={(e) => setNovoCusto((n) => ({ ...n, min_1: e.target.checked }))}
-                    title="Sempre cobrar no mínimo 1"
-                    style={{ width: 18, height: 18 }}
-                  />
-                </td>
                 <td>
                   <button
                     className="btn-ghost small"
@@ -638,9 +616,9 @@ export default function Settings() {
                       if (!novoCusto.nome) return;
                       setCustosAdicionais((list) => [
                         ...list,
-                        { nome: novoCusto.nome, valor: novoCusto.valor, a_cada: parseInt(novoCusto.a_cada) || 1, min_1: novoCusto.min_1 !== false }
+                        { nome: novoCusto.nome, valor: novoCusto.valor, a_cada: parseInt(novoCusto.a_cada) || 1 }
                       ]);
-                      setNovoCusto({ nome: '', valor: '', a_cada: 1, min_1: true });
+                      setNovoCusto({ nome: '', valor: '', a_cada: 1 });
                     }}
                   >
                     Adicionar
