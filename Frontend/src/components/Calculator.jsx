@@ -355,7 +355,7 @@ export default function Calculator({ onOpenBatch }) {
       const yyyy = now.getFullYear();
       const hh = String(now.getHours()).padStart(2, '0');
       const min = String(now.getMinutes()).padStart(2, '0');
-      link.download = `EcoFiber-Cotacao-${dd}-${mm}-${yyyy}-${hh}h${min}.pdf`;
+      link.download = `EcoFiber-Cotacao-${dd}-${mm}-${yyyy}-${hh}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
