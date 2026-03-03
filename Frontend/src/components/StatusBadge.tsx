@@ -69,21 +69,22 @@ export default function StatusBadge() {
   }, [data]);
 
   return (
-    <div className={`status-badge ${overallOk ? 'ok' : 'warn'} ${expanded ? 'expanded' : 'compact'}`} aria-live="polite">
-      <button
-        type="button"
+    <div 
+      className={`status-badge ${overallOk ? 'ok' : 'warn'} ${expanded ? 'expanded' : 'compact'}`} 
+      aria-live="polite"
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+    >
+      <div
         className="status-pill"
-        onClick={() => setExpanded((v) => !v)}
-        title="Ver status da API"
+        title="Passe o mouse para ver detalhes da API"
       >
         <span className={`dot ${overallOk ? 'ok' : 'warn'}`} aria-hidden />
         <span className="pill-label">{overallOk ? 'API online' : 'API degradada'}</span>
         <span className="pill-meta">{data?.latency_ms ? `${data.latency_ms} ms` : ''}</span>
-        <span className="chevron" aria-hidden>{expanded ? '▲' : '▼'}</span>
-      </button>
+      </div>
 
-      {expanded && (
-        <div className="status-panel">
+      <div className={`status-panel ${expanded ? 'visible' : ''}`}>
           <div className="status-row">
             <span className={`dot ${overallOk ? 'ok' : 'warn'}`} aria-hidden />
             <span className="label">API</span>
@@ -107,7 +108,6 @@ export default function StatusBadge() {
             </button>
           </div>
         </div>
-      )}
     </div>
   );
 }

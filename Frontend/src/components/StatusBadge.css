@@ -8,44 +8,9 @@
 }
 
 .status-badge.compact .status-panel {
-  display: none;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: rgba(255,255,255,0.86);
-  color: #111827;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.15s ease;
-}
-
-.status-pill:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.08);
-}
-
-.status-badge.ok .status-pill { border-color: #22c55e33; }
-.status-badge.warn .status-pill { border-color: #f59e0b33; }
-
-.pill-label {
-  font-size: 0.92rem;
-}
-
-.pill-meta {
-  color: #6b7280;
-  font-size: 0.82rem;
-}
-
-.chevron {
-  font-size: 0.8rem;
-  color: #6b7280;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
 }
 
 .status-panel {
@@ -61,6 +26,43 @@
   min-width: 260px;
   max-width: 360px;
   z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+}
+
+.status-panel.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255,255,255,0.86);
+  color: #111827;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  cursor: default;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.status-badge.ok .status-pill { border-color: #22c55e33; }
+.status-badge.warn .status-pill { border-color: #f59e0b33; }
+
+.pill-label {
+  font-size: 0.92rem;
+}
+
+.pill-meta {
+  color: #6b7280;
+  font-size: 0.82rem;
 }
 
 .status-row,
