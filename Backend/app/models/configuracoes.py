@@ -9,14 +9,13 @@ def get_configuracoes(require_existing: bool = False):
     resp = client.table('configuracoes').select('*').eq('id', 1).limit(1).execute()
     rows = resp.data or []
     row = rows[0] if rows else None
-    has_tamanho_alca = row is not None and 'tamanho_alca' in row
 
     if not row:
         if require_existing:
             raise LookupError('Configurações não encontradas no Supabase.')
         return {
             'margem': 0.0,
-            'outros_custos': 0.0,
+            'custo_cordao': 0.0,
             'tema': 'Escuro',
             'notificacoes': 0,
             'perdas_calibracao_un': 0,
@@ -25,35 +24,23 @@ def get_configuracoes(require_existing: bool = False):
             'ipi_percentual': 0.0,
         }
 
-    if has_tamanho_alca:
-        return {
-            'margem': float(row.get('margem') or 0),
-            'outros_custos': float(row.get('outros_custos') or 0),
-            'tema': row.get('tema') or 'Escuro',
-            'notificacoes': int(bool(row.get('notificacoes'))),
-            'perdas_calibracao_un': int(row.get('perdas_calibracao_un') or 0),
-            'valor_silk': float(row.get('valor_silk') or 0.0),
-            'tamanho_alca': float(row.get('tamanho_alca') or 0.0),
-            'ipi_percentual': float(row.get('ipi_percentual') or 0.0),
-        }
-    else:
-        return {
-            'margem': float(row.get('margem') or 0),
-            'outros_custos': float(row.get('outros_custos') or 0),
-            'tema': row.get('tema') or 'Escuro',
-            'notificacoes': int(bool(row.get('notificacoes'))),
-            'perdas_calibracao_un': int(row.get('perdas_calibracao_un') or 0),
-            'valor_silk': float(row.get('valor_silk') or 0.0),
-            'tamanho_alca': 0.0,
-            'ipi_percentual': float(row.get('ipi_percentual') or 0.0),
-        }
+    return {
+        'margem': float(row.get('margem') or 0),
+        'custo_cordao': float(row.get('custo_cordao') or 0),
+        'tema': row.get('tema') or 'Escuro',
+        'notificacoes': int(bool(row.get('notificacoes'))),
+        'perdas_calibracao_un': int(row.get('perdas_calibracao_un') or 0),
+        'valor_silk': float(row.get('valor_silk') or 0.0),
+        'tamanho_alca': float(row.get('tamanho_alca') or 0.0),
+        'ipi_percentual': float(row.get('ipi_percentual') or 0.0),
+    }
 
-def update_configuracoes(margem=None, outros_custos=None, tema=None, notificacoes=None, perdas_calibracao_un=None, valor_silk=None, tamanho_alca=None, ipi_percentual=None):
+def update_configuracoes(margem=None, custo_cordao=None, tema=None, notificacoes=None, perdas_calibracao_un=None, valor_silk=None, tamanho_alca=None, ipi_percentual=None):
     updates = {}
     if margem is not None:
         updates['margem'] = float(margem)
-    if outros_custos is not None:
-        updates['outros_custos'] = float(outros_custos)
+    if custo_cordao is not None:
+        updates['custo_cordao'] = float(custo_cordao)
     if tema is not None:
         updates['tema'] = str(tema)
     if notificacoes is not None:

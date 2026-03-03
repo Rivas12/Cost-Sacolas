@@ -232,13 +232,13 @@ export default function Calculator({ onOpenBatch }) {
         altura_cm: form.altura_cm ? parseFloat(form.altura_cm) : undefined,
         margem: parseFloat(settings.margem || '0'),
         comissao: parseFloat(form.comissao || '0'),
-        outros_custos: parseFloat(settings.outros_custos || '0'),
         quantidade: parseInt(form.quantidade || '1'),
         estado: form.estado,
         cliente_tem_ie: Boolean(form.cliente_tem_ie),
         incluir_lateral: Boolean(form.incluir_lateral),
         incluir_alca: Boolean(form.incluir_alca),
         incluir_fundo: Boolean(form.incluir_fundo),
+        incluir_cordao: Boolean(form.incluir_cordao),
         lateral_cm: form.lateral_cm ? parseFloat(form.lateral_cm) : undefined,
         fundo_cm: form.fundo_cm ? parseFloat(form.fundo_cm) : undefined,
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
@@ -771,11 +771,13 @@ export default function Calculator({ onOpenBatch }) {
                     <td className="num">—</td>
                     <td className="num">R$ {Number(resultado.perdas_calibracao_valor || 0).toFixed(2)}</td>
                   </tr>
-                  <tr>
-                    <td>Custos operacionais ({resultado.custo_operacional_percentual}%)</td>
-                    <td className="num">—</td>
-                    <td className="num">R$ {resultado.custo_operacional_valor.toFixed(2)}</td>
-                  </tr>
+                  {resultado.incluir_cordao && (
+                    <tr>
+                      <td>Cordão ({resultado.largura_utilizada_cm || resultado.largura_cm}% de R$ {Number(resultado.custo_cordao_config || 0).toFixed(2)})</td>
+                      <td className="num">R$ {Number(resultado.valor_cordao_unitario || 0).toFixed(4)}</td>
+                      <td className="num">R$ {Number(resultado.valor_cordao_total || 0).toFixed(2)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
               {(resultado.servicos_detalhe && resultado.servicos_detalhe.length > 0) ? (

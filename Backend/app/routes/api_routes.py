@@ -626,7 +626,7 @@ def put_configs():
     data = request.get_json() or {}
     ok = update_configuracoes(
         margem=data.get('margem'),
-        outros_custos=data.get('outros_custos'),
+        custo_cordao=data.get('custo_cordao'),
         tema=data.get('tema'),
         notificacoes=data.get('notificacoes'),
         perdas_calibracao_un=data.get('perdas_calibracao_un'),
@@ -983,7 +983,7 @@ def calcular_preco():
     cfg = get_configuracoes()
     margem = float(data.get('margem', cfg.get('margem', 0)))
     comissao = float(data.get('comissao', 0))
-    outros_custos = float(data.get('outros_custos', cfg.get('outros_custos', 0)))
+    custo_cordao = float(cfg.get('custo_cordao', 0))
     quantidade = int(data.get('quantidade', 1))
     perdas_calibracao_un = int(data.get('perdas_calibracao_un', cfg.get('perdas_calibracao_un', 0) or 0))
     # Silk legado (mantido para compatibilidade, mas padrão é não incluir)
@@ -992,6 +992,7 @@ def calcular_preco():
     incluir_lateral = bool(data.get('incluir_lateral', False))
     incluir_alca = bool(data.get('incluir_alca', False))
     incluir_fundo = bool(data.get('incluir_fundo', False))
+    incluir_cordao = bool(data.get('incluir_cordao', False))
     # Tamanho da alça (cm) — preferência: payload override, senão configuração (campo salvo: tamanho_alca)
     tamanho_alca_cfg = float(cfg.get('tamanho_alca', 0) or 0)
     try:
@@ -1138,9 +1139,21 @@ def calcular_preco():
     valor_silk_total = round((valor_silk_unit or 0) * quantidade, 2)
     valor_servicos_total = round((valor_servicos_unit or 0) * quantidade, 2)
 
-    # ==== ETAPA 1: Custo Base = Material + Perdas + Custos Operacionais ====
-    valor_custos_operacionais = round(custo_total * (outros_custos / 100) if outros_custos > 0 else 0, 2)
-    custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais, 2)
+    # ==== CÁLCULO DO CORDÃO ====
+    # Se incluir_cordao estiver marcado, calcula baseado na largura
+    # Largura 50cm = 50% do custo_cordao, Largura 120cm = 120% do custo_cordao
+    # O valor é por unidade, multiplicado pela quantidade
+    valor_cordao_unitario = 0
+    valor_cordao_total = 0
+    if incluir_cordao and custo_cordao > 0:
+        # largura_used já inclui lateral_effective
+        percentual_cordao = largura_used / 100  # ex: 50cm = 0.5, 120cm = 1.2
+        valor_cordao_unitario = round(custo_cordao * percentual_cordao, 4)
+        valor_cordao_total = round(valor_cordao_unitario * quantidade, 2)
+
+    # ==== ETAPA 1: Custo Base = Material + Perdas + Cordão ====
+    valor_custos_operacionais = 0  # Removido outros_custos - será substituído por custos adicionais
+    custo_base = round(custo_total + perdas_calibracao_valor + valor_custos_operacionais + valor_cordao_total, 2)
 
     # ==== ETAPA 2: Margem aplicada ====
     margem_aplicada = margem
@@ -1154,7 +1167,6 @@ def calcular_preco():
     margem_dec = margem_aplicada / 100 if margem_aplicada > 0 else 0
     impostos_sem_icms_dec = total_impostos_fixos_sem_icms / 100 if total_impostos_fixos_sem_icms > 0 else 0
     icms_dec = icms / 100 if icms > 0 else 0
-    outros_dec = outros_custos / 100 if outros_custos > 0 else 0
     comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
     ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
 
@@ -1166,7 +1178,7 @@ def calcular_preco():
     
     # Percentuais de formação de preço (exceto ICMS - calculado separadamente)
     # PIS, COFINS, IRPJ, CSLL, INSS são sempre sobre base SEM IPI
-    soma_percentuais_formacao = margem_dec + impostos_sem_icms_dec + outros_dec + comissao_dec_aplicada
+    soma_percentuais_formacao = margem_dec + impostos_sem_icms_dec + comissao_dec_aplicada
     
     if cliente_tem_ie:
         # Cliente COM IE: ICMS sobre base SEM IPI
@@ -1233,7 +1245,7 @@ def calcular_preco():
     valor_margem = round(preco_final_produto_sem_ipi * margem_dec, 2)
     valor_impostos_sem_icms = round(base_impostos_nao_icms * impostos_sem_icms_dec, 2)
     valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
-    valor_custos_operacionais_final = round(preco_final_produto_sem_ipi * outros_dec, 2)
+    valor_custos_operacionais_final = 0  # Removido - será substituído por custos adicionais
     
     # ==== ETAPA 6.1: Calcular valor de cada imposto individualmente ====
     # Impostos (exceto ICMS): calculados sobre base_impostos_nao_icms (preço de venda sem IPI)
@@ -1365,8 +1377,15 @@ def calcular_preco():
         'custo_un': round((custo_total / max(1, quantidade)), 2),
         'custo_real': round(custo_real, 2),
         'custo_material_total': round(custo_total, 2),
-        'custo_operacional_percentual': round(outros_custos, 2),
+        'custo_operacional_percentual': 0,
         'custo_operacional_valor': round(valor_custos_operacionais, 2),
+        
+        # ===== CORDÃO =====
+        'incluir_cordao': incluir_cordao,
+        'custo_cordao_config': round(custo_cordao, 2),
+        'valor_cordao_unitario': round(valor_cordao_unitario, 4),
+        'valor_cordao_total': round(valor_cordao_total, 2),
+        
         'custo_base': round(custo_base, 2),
         
         # ===== COMPOSIÇÃO DO PREÇO FINAL (extraído de cima para baixo) =====
@@ -1506,7 +1525,6 @@ def enviar_aprovacao():
         f"• Quantidade total (com perdas): {int(cot.get('quantidade_total') or cot.get('quantidade') or 0)}",
         f"• Comissão: {cot.get('comissao_percentual', 0)}% → {fmt_money(cot.get('valor_comissao'))}",
         f"• Impostos fixos: {cot.get('impostos_fixos_percentual', 0)}% → {fmt_money(cot.get('valor_impostos_fixos'))}",
-        f"• Outros: {cot.get('outros_custos_percentual', 0)}% → {fmt_money(cot.get('valor_outros'))}",
     ])
 
     # Extras (Silk) apenas quando incluído

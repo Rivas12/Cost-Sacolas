@@ -61,9 +61,9 @@ export default function Settings() {
           setSettings((s) => ({
             ...s,
             margem: dataCfg.margem ?? s.margem,
-            outros_custos: dataCfg.outros_custos ?? s.outros_custos,
             perdas_calibracao_un: dataCfg.perdas_calibracao_un ?? s.perdas_calibracao_un ?? 0,
             tamanho_alca: dataCfg.tamanho_alca ?? s.tamanho_alca ?? 0,
+            custo_cordao: dataCfg.custo_cordao ?? s.custo_cordao ?? 0,
             tema: dataCfg.tema ?? s.tema,
             notificacoes: !!dataCfg.notificacoes,
           }));
@@ -153,9 +153,9 @@ export default function Settings() {
       // Salva configurações globais no banco
         const cfgPayload = {
         margem: toNumber(settings.margem),
-        outros_custos: toNumber(settings.outros_custos),
         perdas_calibracao_un: parseInt(settings.perdas_calibracao_un || 0),
         tamanho_alca: parseFloat(settings.tamanho_alca || 0),
+        custo_cordao: parseFloat(settings.custo_cordao || 0),
         ipi_percentual: parseFloat(settings.ipi_percentual || 0),
         tema: settings.tema,
         notificacoes: !!settings.notificacoes,
@@ -323,23 +323,6 @@ export default function Settings() {
           </div>
 
           <div className="settings-field">
-            <label htmlFor="outros">Outros Custos (%)</label>
-            <div className="input-suffix">
-              <input
-                id="outros"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0,00"
-                value={settings.outros_custos}
-                onChange={(e) => setSettings((s) => ({ ...s, outros_custos: e.target.value }))}
-              />
-              <span className="suffix">%</span>
-            </div>
-            <small>Percentual de custos adicionais</small>
-          </div>
-
-          <div className="settings-field">
             <label htmlFor="perdas">Perdas de calibração (mt)</label>
             <div className="input-suffix">
               <input
@@ -374,20 +357,20 @@ export default function Settings() {
           </div>
 
           <div className="settings-field">
-            <label htmlFor="valor_cordao">Valor cordão (mt)</label>
+            <label htmlFor="custo_cordao">Custo cordão (mt)</label>
             <div className="input-suffix">
               <input
-                id="valor_cordao"
+                id="custo_cordao"
                 type="number"
                 min="0"
                 step="0.01"
                 placeholder="0.00"
-                value={settings.valor_cordao ?? ''}
-                onChange={(e) => setSettings((s) => ({ ...s, valor_cordao: e.target.value }))}
+                value={settings.custo_cordao ?? ''}
+                onChange={(e) => setSettings((s) => ({ ...s, custo_cordao: e.target.value }))}
               />
               <span className="suffix">R$</span>
             </div>
-            <small>Valor do cordão por metro quando "Incluir cordão" estiver marcado</small>
+            <small>Custo do cordão por metro quando "Incluir cordão" estiver marcado</small>
           </div>
 
           <div className="settings-field">
