@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import Sidebar from './components/Sidebar';
 import Calculator from './components/Calculator';
 import CalculoEmLote from './components/CalculoEmLote';
@@ -118,6 +119,7 @@ function App() {
             </div>
           </div>
         )}
+        <Analytics />
       </div>
     </SettingsProvider>
   );
