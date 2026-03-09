@@ -9,6 +9,7 @@ import InserirLogo from './components/InserirLogo';
 import StatusBadge from './components/StatusBadge';
 import './App.css';
 import { SettingsProvider, SettingsBootstrapper } from './context/SettingsContext';
+import { Analytics } from '@vercel/analytics/react';
 
 const APP_PASSWORD = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_PASSWORD) || 'admin1243';
 
