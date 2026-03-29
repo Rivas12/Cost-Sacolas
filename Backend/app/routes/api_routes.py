@@ -3,6 +3,7 @@ from app.supabase_client import get_client, SupabaseConfigError
 from app.models.gramatura import Gramatura
 from app.models.imposto_fixo import init_imposto_fixo, ensure_impostos_fixos_defaults, IMPOSTOS_ORDEM
 from app.models.configuracoes import get_configuracoes, update_configuracoes
+from app.utils.price_calculator import determinar_icms, calcular_preco_final
 import os
 from urllib import request as urlrequest
 from urllib import parse as urlparse
@@ -307,8 +308,9 @@ def gerar_pdf_batch_precos():
                 base_payload['lateral_cm'] = it.get('lateral_cm')
                 base_payload['fundo_cm'] = it.get('fundo_cm')
                 base_payload['incluir_alca'] = bool(it.get('incluir_alca'))
-                # Força cálculo com IE para não gerar DIFAL: usa a alíquota estadual da gramatura
-                base_payload['cliente_tem_ie'] = True
+                # Respeita a configuração de IE do contexto (não força sempre True)
+                if 'cliente_tem_ie' not in base_payload:
+                    base_payload['cliente_tem_ie'] = False
                 base_payload['incluir_lateral'] = True
                 base_payload['incluir_fundo'] = bool(it.get('fundo_cm'))
 
@@ -397,7 +399,7 @@ def gerar_pdf_batch_precos():
         header = Table(
             [[
                 Paragraph("<b>Eco<span color='#2F80ED'>Fiber</span></b>", styles['Logo']),
-                Paragraph("<b>COTAÇÃO COMERCIAL</b>", styles['Titulo'])
+                Paragraph("<b>TABELA DE PREÇOS</b>", styles['Titulo'])
             ]],
             colWidths=[95*mm, 75*mm]
         )
@@ -1108,22 +1110,20 @@ def calcular_preco():
     altura_cm_db = float(row.get('altura_cm')) if row.get('altura_cm') is not None else None
 
     # Determinar ICMS:
-    # - Com IE e MESMO estado (SP): usa alíquota COMPLETA do estado (ex.: 18% em SP)
-    # - Com IE e estado DIFERENTE: usa alíquota INTERESTADUAL correta (7% ou 12% conforme regras)
-    # - Sem IE (consumidor final, pessoa física): usa alíquota COMPLETA do estado conforme ICMS_CONSUMIDOR_FINAL
+    # - MESMO estado (intraestadual): 18% ICMS COMPLETO, independente de ter IE ou não
+    # - OUTRO estado COM IE: alíquota INTERESTADUAL (7% ou 12% conforme regras)
+    # - OUTRO estado SEM IE: alíquota COMPLETA daquele estado conforme ICMS_CONSUMIDOR_FINAL
     ESTADO_EMPRESA = 'SP'  # A empresa opera em SP
-    if cliente_tem_ie:
-        if estado and estado == ESTADO_EMPRESA:
-            # Cliente tem IE e é do mesmo estado: usa alíquota completa estadual
-            icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
-            icms_origem = 'icms_completo_mesmo_estado'
-        else:
-            # Cliente tem IE mas é de outro estado: operação interestadual
-            # Usa alíquota correta baseada nas regras de origem/destino
-            icms = get_icms_interestadual(ESTADO_EMPRESA, estado) if estado else 0.0
-            icms_origem = 'icms_interestadual_ie_outro_estado' if estado else 'icms_zero_sem_estado'
+    if estado and estado == ESTADO_EMPRESA:
+        # Operação INTRAESTADUAL (mesmo estado): SEMPRE 18% completo, com ou sem IE
+        icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
+        icms_origem = 'icms_completo_intraestadual'
+    elif cliente_tem_ie:
+        # Operação INTERESTADUAL com IE: usa alíquota interestadual (7% ou 12%)
+        icms = get_icms_interestadual(ESTADO_EMPRESA, estado) if estado else 0.0
+        icms_origem = 'icms_interestadual_ie' if estado else 'icms_zero_sem_estado'
     else:
-        # Cliente SEM IE (consumidor final): usa alíquota completa do estado
+        # Operação INTERESTADUAL sem IE (consumidor final): usa alíquota completa do estado destino
         icms = float(ICMS_CONSUMIDOR_FINAL.get(estado, 0.0)) if estado else 0.0
         icms_origem = 'icms_completo_consumidor_final' if estado else 'icms_zero_sem_estado'
     # altura do produto solicitada (pode vir no payload) - em cm
@@ -1241,66 +1241,25 @@ def calcular_preco():
     comissao_dec_aplicada = comissao / 100 if comissao > 0 else 0
     ipi_dec = (ipi_percentual / 100) if ipi_percentual is not None else 0
 
-    # ===== CÁLCULO UNIFICADO =====
-    # IPI é SEMPRE calculado da mesma forma, independente do IE
-    # A diferença do IE afeta apenas a BASE do ICMS:
-    # - COM IE: ICMS sobre base SEM IPI
-    # - SEM IE: ICMS sobre base COM IPI
+    # ===== USAR FUNÇÃO UNIFICADA DE CÁLCULO =====
+    resultado_preco = calcular_preco_final(
+        custo_base=custo_base,
+        margem_dec=margem_dec,
+        impostos_sem_icms_dec=impostos_sem_icms_dec,
+        icms_dec=icms_dec,
+        comissao_dec_aplicada=comissao_dec_aplicada,
+        ipi_dec=ipi_dec
+    )
     
-    # Percentuais de formação de preço (exceto ICMS - calculado separadamente)
-    # PIS, COFINS, IRPJ, CSLL, INSS são sempre sobre base SEM IPI
-    soma_percentuais_formacao = margem_dec + impostos_sem_icms_dec + comissao_dec_aplicada
-    
-    if cliente_tem_ie:
-        # Cliente COM IE: ICMS sobre base SEM IPI
-        # ICMS entra na formação do preço normalmente
-        soma_total = soma_percentuais_formacao + icms_dec
-        if soma_total >= 1.0:
-            soma_total = 0.99
-        denom = max(1e-9, (1 - soma_total))
-        preco_final_produto_sem_ipi = round(custo_base / denom, 2)
-        
-        # IPI é SEMPRE aplicado por fora, sobre o preço sem IPI
-        valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
-        preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
-        
-        # Base do ICMS é o preço SEM IPI (quando tem IE)
-        base_icms = preco_final_produto_sem_ipi
-        valor_icms = round(base_icms * icms_dec, 2)
-        
-        # Base para PIS, COFINS, etc. é o preço sem IPI (igual ao preco_final_produto_sem_ipi)
-        base_impostos_nao_icms = preco_final_produto_sem_ipi
-    else:
-        # Cliente SEM IE: ICMS sobre base COM IPI
-        # Primeiro, calcula o preço base SEM considerar ICMS na formação
-        # Este é o preço "real" sobre o qual PIS, COFINS, etc. incidem
-        if soma_percentuais_formacao >= 1.0:
-            soma_percentuais_formacao = 0.99
-        denom_base = max(1e-9, (1 - soma_percentuais_formacao))
-        preco_base_sem_icms = round(custo_base / denom_base, 2)
-        
-        # O ICMS incide sobre (preço + IPI), então ajustamos o preço para absorver o ICMS
-        # ICMS é "por dentro": P_final = P_base / (1 - ICMS% * (1 + IPI%))
-        fator_icms = icms_dec * (1 + ipi_dec)
-        if fator_icms >= 1.0:
-            fator_icms = 0.99
-        denom_icms = max(1e-9, (1 - fator_icms))
-        
-        # Preço final sem IPI (para NF) - inclui ajuste do ICMS sobre IPI
-        preco_final_produto_sem_ipi = round(preco_base_sem_icms / denom_icms, 2)
-        
-        # IPI por fora
-        valor_ipi = round(preco_final_produto_sem_ipi * ipi_dec, 2) if ipi_dec > 0 else 0
-        preco_final_produto_com_ipi = round(preco_final_produto_sem_ipi + valor_ipi, 2)
-        
-        # Base do ICMS é o preço COM IPI (quando não tem IE)
-        base_icms = preco_final_produto_com_ipi
-        valor_icms = round(base_icms * icms_dec, 2)
-        
-        # Base para PIS, COFINS, etc. é o preço SEM IPI e SEM o ajuste do ICMS sobre IPI
-        # Isso porque esses impostos incidem sobre o faturamento (preço do produto sem IPI)
-        # e não devem incluir o "custo" do ICMS sobre IPI
-        base_impostos_nao_icms = preco_final_produto_sem_ipi
+    preco_final_produto_sem_ipi = resultado_preco['preco_final_produto_sem_ipi']
+    preco_final_produto_com_ipi = resultado_preco['preco_final_produto_com_ipi']
+    valor_ipi = resultado_preco['valor_ipi']
+    base_icms = resultado_preco['base_icms']
+    valor_icms = resultado_preco['valor_icms']
+    base_impostos_nao_icms = resultado_preco['base_impostos_nao_icms']
+    valor_margem = resultado_preco['valor_margem']
+    valor_impostos_sem_icms = resultado_preco['valor_impostos_sem_icms']
+    valor_comissao = resultado_preco['valor_comissao']
 
     # Total de impostos para exibição (usado no cálculo de formação)
     total_impostos_fixos = total_impostos_fixos_sem_icms + icms
@@ -1310,17 +1269,11 @@ def calcular_preco():
     preco_final_produto = preco_final_produto_com_ipi  # Produto COM IPI, SEM serviços (NF produto)
     preco_final_total = round(preco_final_com_servicos, 2)  # Valor final completo (produto + IPI + serviços)
     
-    # ==== ETAPA 6: Extrair cada componente como % do preço ====
-    # Margem e Comissão são calculados sobre o preço SEM IPI (preço de venda)
-    # Impostos (exceto ICMS) são calculados sobre base_impostos_nao_icms
-    valor_margem = round(preco_final_produto_sem_ipi * margem_dec, 2)
-    valor_impostos_sem_icms = round(base_impostos_nao_icms * impostos_sem_icms_dec, 2)
-    valor_comissao = round(preco_final_produto_sem_ipi * comissao_dec_aplicada, 2)
     valor_custos_operacionais_final = 0  # Removido - será substituído por custos adicionais
     
-    # ==== ETAPA 6.1: Calcular valor de cada imposto individualmente ====
+    # ==== ETAPA 6: Calcular valor de cada imposto individualmente ====
     # Impostos (exceto ICMS): calculados sobre base_impostos_nao_icms (preço de venda sem IPI)
-    # ICMS: calculado sobre base_icms (COM ou SEM IPI, dependendo se cliente tem IE)
+    # ICMS: calculado sobre base_icms (preço sem IPI para intraestadual e IE)
     impostos_detalhe = []
     for imp in impostos_fixos_lista:
         pct = float(imp.get('percentual') or 0)
@@ -1337,11 +1290,11 @@ def calcular_preco():
         'nome': 'ICMS',
         'percentual': icms,
         'valor': valor_icms,
-        'base': 'preco_com_ipi' if not cliente_tem_ie else 'preco_sem_ipi',
+        'base': 'preco_sem_ipi',
         'origem': icms_origem
     })
     
-    # Total de impostos (ICMS já calculado na base correta + demais impostos)
+    # Total de impostos (ICMS + demais impostos)
     valor_impostos = round(valor_impostos_sem_icms + valor_icms, 2)
     
     # Detalhamento da comissão

@@ -14,6 +14,13 @@ const ESTADOS_BR = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
 ];
 
+// Formata número como moeda brasileira (R$ 1.234,56)
+const formatarMoeda = (valor, decimais = 2) => {
+  const num = Number(valor);
+  if (isNaN(num)) return decimais === 4 ? 'R$ 0,0000' : 'R$ 0,00';
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: decimais, maximumFractionDigits: decimais });
+};
+
 export default function Calculator({ onOpenBatch }) {
   const { settings } = useSettings();
   // Opções carregadas da API
@@ -568,11 +575,11 @@ export default function Calculator({ onOpenBatch }) {
             <div className="result-highlights">
               <div className="result-highlight" title="Fórmula: Preço Final / Quantidade. Inclui IPI e serviços.">
                 <span>Preço unitário final</span>
-                <strong>R$ {(resultado.preco_final / Math.max(1, resultado.quantidade || 1)).toFixed(4)}</strong>
+                <strong>{formatarMoeda(resultado.preco_final / Math.max(1, resultado.quantidade || 1), 4)}</strong>
               </div>
               <div className="result-highlight" title="Preço Final = Preço_com_IPI + Serviços. É o valor total da NF.">
                 <span>Preço final</span>
-                <strong>R$ {resultado.preco_final.toFixed(2)}</strong>
+                <strong>{formatarMoeda(resultado.preco_final)}</strong>
               </div>
             </div>
           </div>
@@ -590,14 +597,14 @@ export default function Calculator({ onOpenBatch }) {
                   🔄
                 </button>
               </span>
-              <strong>R$ {showUnitarioComIpi 
-                ? Number((resultado.preco_final_produto_com_ipi || 0) / Math.max(1, resultado.quantidade || 1)).toFixed(4) 
-                : Number(resultado.preco_unitario_sem_ipi || 0).toFixed(4)
-              }</strong>
+              <strong>{formatarMoeda(showUnitarioComIpi 
+                ? Number((resultado.preco_final_produto_com_ipi || 0) / Math.max(1, resultado.quantidade || 1))
+                : Number(resultado.preco_unitario_sem_ipi || 0)
+              , 4)}</strong>
             </div>
-            <div className="result-box" title="Preço do produto COM IPI, SEM serviços. Vai na NF de produto."><span>Total do produto (NF produto)</span><strong>R$ {Number(resultado.preco_final_produto || 0).toFixed(2)}</strong></div>
-            <div className="result-box" title="Soma de Silk + outros serviços. Vai na NF de serviço separada."><span>Serviços (NF serviço)</span><strong>R$ {Number(resultado.preco_final_servicos || 0).toFixed(2)}</strong></div>
-            <div className="result-box" title="IPI aplicado POR FORA. Fórmula: Preço_sem_IPI × IPI%. Base: Preço sem IPI."><span>Valor IPI</span><strong>R$ {Number(resultado.valor_ipi || 0).toFixed(2)}</strong></div>
+            <div className="result-box" title="Preço do produto COM IPI, SEM serviços. Vai na NF de produto."><span>Total do produto (NF produto)</span><strong>{formatarMoeda(Number(resultado.preco_final_produto || 0))}</strong></div>
+            <div className="result-box" title="Soma de Silk + outros serviços. Vai na NF de serviço separada."><span>Serviços (NF serviço)</span><strong>{formatarMoeda(Number(resultado.preco_final_servicos || 0))}</strong></div>
+            <div className="result-box" title="IPI aplicado POR FORA. Fórmula: Preço_sem_IPI × IPI%. Base: Preço sem IPI."><span>Valor IPI</span><strong>{formatarMoeda(Number(resultado.valor_ipi || 0))}</strong></div>
           </div>
 
           {/* Bloco público mostrando aproveitamento da altura (visível sem desbloquear etapas) */}
@@ -700,17 +707,17 @@ export default function Calculator({ onOpenBatch }) {
                   <tr title="Base: Preço sem IPI. Fórmula: Preço_sem_IPI × Margem%">
                     <td><strong>1. Margem de Lucro</strong></td>
                     <td className="num"><strong>{resultado.margem_percentual.toFixed(2)}%</strong></td>
-                    <td className="num"><strong>R$ {resultado.valor_margem.toFixed(2)}</strong></td>
+                    <td className="num"><strong>{formatarMoeda(resultado.valor_margem)}</strong></td>
                   </tr>
                   <tr title="Base: Preço sem IPI. IPI é aplicado POR FORA. Fórmula: Preço_sem_IPI × IPI%">
                     <td><strong>2. IPI</strong></td>
                     <td className="num"><strong>{resultado.ipi_percentual.toFixed(2)}%</strong></td>
-                    <td className="num"><strong>R$ {resultado.valor_ipi.toFixed(2)}</strong></td>
+                    <td className="num"><strong>{formatarMoeda(resultado.valor_ipi)}</strong></td>
                   </tr>
                   <tr title="Soma de PIS, COFINS, IRPJ, CSLL, INSS + ICMS. Base: Preço sem IPI (exceto ICMS sem IE que usa Preço COM IPI)">
                     <td><strong>3. Impostos</strong></td>
                     <td className="num"><strong>{resultado.impostos_fixos_percentual.toFixed(2)}%</strong></td>
-                    <td className="num"><strong>R$ {resultado.valor_impostos_fixos.toFixed(2)}</strong></td>
+                    <td className="num"><strong>{formatarMoeda(resultado.valor_impostos_fixos)}</strong></td>
                   </tr>
                   {Array.isArray(resultado.impostos_fixos_detalhe) && resultado.impostos_fixos_detalhe
                     .filter((imp) => Number(imp.percentual || 0) > 0.0001)
@@ -726,7 +733,7 @@ export default function Calculator({ onOpenBatch }) {
                         <tr key={`imp-${idx}`} style={{fontSize: '0.9em'}} title={`${baseInfo}${origemInfo}. Fórmula: Base × ${pct.toFixed(2)}%`}>
                           <td style={{paddingLeft: '40px'}}>• {imp.nome}</td>
                           <td className="num">{pct.toFixed(2)}%</td>
-                          <td className="num">R$ {val.toFixed(2)}</td>
+                          <td className="num">{formatarMoeda(val)}</td>
                         </tr>
                       );
                     })}
@@ -734,28 +741,28 @@ export default function Calculator({ onOpenBatch }) {
                     <tr title="Desconto aplicado sobre o preço final">
                       <td><strong>Desconto</strong></td>
                       <td className="num"><strong>{resultado.desconto_percentual.toFixed(2)}%</strong></td>
-                      <td className="num"><strong>-R$ {resultado.valor_desconto.toFixed(2)}</strong></td>
+                      <td className="num"><strong>-{formatarMoeda(resultado.valor_desconto)}</strong></td>
                     </tr>
                   )}
                   <tr title="Base: Preço sem IPI (produto) + Serviços. Fórmula: (Preço_sem_IPI + Serviços) × Comissão%">
                     <td><strong>4. Comissão ({resultado.comissao_percentual.toFixed(2)}% do total)</strong></td>
                     <td className="num"><strong>{resultado.comissao_percentual.toFixed(2)}%</strong></td>
-                    <td className="num"><strong>R$ {resultado.valor_comissao.toFixed(2)}</strong></td>
+                    <td className="num"><strong>{formatarMoeda(resultado.valor_comissao)}</strong></td>
                   </tr>
                   <tr style={{fontSize: '0.9em'}} title="Comissão sobre Preço_sem_IPI do produto">
-                    <td style={{paddingLeft: '40px'}}>• Produto: R$ {Number(resultado.valor_comissao_produto || 0).toFixed(2)}</td>
+                    <td style={{paddingLeft: '40px'}}>• Produto: {formatarMoeda(Number(resultado.valor_comissao_produto || 0))}</td>
                     <td className="num">—</td>
                     <td className="num">—</td>
                   </tr>
                   <tr style={{fontSize: '0.9em'}} title="Comissão sobre valor dos serviços (Silk + outros)">
-                    <td style={{paddingLeft: '40px'}}>• Serviços: R$ {Number(resultado.valor_comissao_servicos || 0).toFixed(2)}</td>
+                    <td style={{paddingLeft: '40px'}}>• Serviços: {formatarMoeda(Number(resultado.valor_comissao_servicos || 0))}</td>
                     <td className="num">—</td>
                     <td className="num">—</td>
                   </tr>
                   <tr style={{borderTop: '1px solid #e5e7eb'}} title="Custo Base = Material + Perdas + Cordão + Custos Adicionais. É a base para calcular o preço final.">
                     <td><strong>= Custo Base</strong></td>
                     <td className="num">—</td>
-                    <td className="num"><strong>R$ {resultado.custo_base.toFixed(2)}</strong></td>
+                    <td className="num"><strong>{formatarMoeda(resultado.custo_base)}</strong></td>
                   </tr>
                 </tbody>
               </table>
@@ -774,28 +781,28 @@ export default function Calculator({ onOpenBatch }) {
                 <tbody>
                   <tr title="Fórmula: Custo_gramatura × (largura + lateral×2) / 100. Lateral dobra pois tem 2 lados.">
                     <td>Custo do material</td>
-                    <td className="num">R$ {resultado.custo_real.toFixed(2)}</td>
-                    <td className="num">R$ {resultado.custo_material_total.toFixed(2)}</td>
+                    <td className="num">{formatarMoeda(resultado.custo_real)}</td>
+                    <td className="num">{formatarMoeda(resultado.custo_material_total)}</td>
                   </tr>
                   <tr style={{fontSize: '0.9em'}} title="Fórmula: metros_perda × custo_unitário_gramatura. Valor fixo por calibração.">
                     <td style={{paddingLeft: '40px'}}>• Perdas ({resultado.perdas_calibracao_un} m)</td>
                     <td className="num">—</td>
-                    <td className="num">R$ {Number(resultado.perdas_calibracao_valor || 0).toFixed(2)}</td>
+                    <td className="num">{formatarMoeda(Number(resultado.perdas_calibracao_valor || 0))}</td>
                   </tr>
                   {resultado.incluir_cordao && (
                     <tr title="Fórmula: custo_cordao × (largura_utilizada / 100) × quantidade. Largura 50cm = 50% do custo.">
-                      <td>Cordão ({resultado.largura_utilizada_cm || resultado.largura_cm}% de R$ {Number(resultado.custo_cordao_config || 0).toFixed(2)})</td>
-                      <td className="num">R$ {Number(resultado.valor_cordao_unitario || 0).toFixed(4)}</td>
-                      <td className="num">R$ {Number(resultado.valor_cordao_total || 0).toFixed(2)}</td>
+                      <td>Cordão ({resultado.largura_utilizada_cm || resultado.largura_cm}% de {formatarMoeda(Number(resultado.custo_cordao_config || 0))})</td>
+                      <td className="num">{formatarMoeda(Number(resultado.valor_cordao_unitario || 0))}</td>
+                      <td className="num">{formatarMoeda(Number(resultado.valor_cordao_total || 0))}</td>
                     </tr>
                   )}
                   {resultado.custos_adicionais_lista && resultado.custos_adicionais_lista.length > 0 && (
                     <>
                       {resultado.custos_adicionais_lista.map((custo, idx) => (
-                        <tr key={`custo-ad-${idx}`} title={`Fórmula: ceil(quantidade / ${custo.a_cada}) × R$${custo.valor_unitario}. Mínimo 1 unidade.`}>
+                        <tr key={`custo-ad-${idx}`} title={`Fórmula: ceil(quantidade / ${custo.a_cada}) × ${formatarMoeda(custo.valor_unitario)}. Mínimo 1 unidade.`}>
                           <td>{custo.nome} ({custo.quantidade}x a cada {custo.a_cada} un.)</td>
-                          <td className="num">R$ {Number(custo.valor_unitario || 0).toFixed(2)}</td>
-                          <td className="num">R$ {Number(custo.valor_total || 0).toFixed(2)}</td>
+                          <td className="num">{formatarMoeda(Number(custo.valor_unitario || 0))}</td>
+                          <td className="num">{formatarMoeda(Number(custo.valor_total || 0))}</td>
                         </tr>
                       ))}
                     </>
@@ -821,23 +828,23 @@ export default function Calculator({ onOpenBatch }) {
                         <tr key={`svc-${idx}`}>
                           <td>{svc.nome || 'Serviço'}</td>
                           <td>{Number(svc.imposto_percentual || 0).toFixed(2)}%</td>
-                          <td>R$ {Number(svc.valor_unitario || 0).toFixed(2)}</td>
-                          <td>R$ {unit.toFixed(2)}</td>
-                          <td>R$ {total.toFixed(2)}</td>
+                          <td>{formatarMoeda(Number(svc.valor_unitario || 0))}</td>
+                          <td>{formatarMoeda(unit)}</td>
+                          <td>{formatarMoeda(total)}</td>
                         </tr>
                       );
                     })}
                     <tr>
                       <td colSpan={4} style={{textAlign:'right', fontWeight:600}}>Total serviços</td>
-                      <td style={{fontWeight:600}}>R$ {Number(resultado.valor_servicos_total || 0).toFixed(2)}</td>
+                      <td style={{fontWeight:600}}>{formatarMoeda(Number(resultado.valor_servicos_total || 0))}</td>
                     </tr>
                     {Number(resultado.valor_silk_total || 0) > 0 && (
                       <tr>
                         <td>Silk (legado)</td>
                         <td>—</td>
-                        <td>R$ {Number(resultado.valor_silk_unitario || 0).toFixed(2)}</td>
-                        <td>R$ {Number(resultado.valor_silk_unitario || 0).toFixed(2)}</td>
-                        <td>R$ {Number(resultado.valor_silk_total || 0).toFixed(2)}</td>
+                        <td>{formatarMoeda(Number(resultado.valor_silk_unitario || 0))}</td>
+                        <td>{formatarMoeda(Number(resultado.valor_silk_unitario || 0))}</td>
+                        <td>{formatarMoeda(Number(resultado.valor_silk_total || 0))}</td>
                       </tr>
                     )}
                   </tbody>
