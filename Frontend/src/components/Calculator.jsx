@@ -558,9 +558,9 @@ export default function Calculator({ onOpenBatch }) {
             <div>
               <h3>Resultado</h3>
               <p>
-                Gramatura: <strong>{resultado.gramatura_nome}</strong> • Largura: <strong>{resultado.largura_cm} cm</strong>
+                Gramatura: <strong>{resultado.gramatura_nome}</strong>
                 {resultado.cortar_tecido && (
-                  <span title={`Largura original: ${resultado.largura_original_cm} cm (cortada ao meio)`} style={{marginLeft:8, color:'#0891b2', fontWeight:600}}>✂️ Tecido cortado</span>
+                  <span title={`Largura original: ${resultado.largura_original_cm} cm (cortada ao meio)`} style={{marginLeft:8, color:'#0891b2', fontWeight:600}}>✂️ Bobina cortada ao meio</span>
                 )}
               </p>
               {/* Aproveitamento exibido apenas na lista de etapas (detalhamento) */}
